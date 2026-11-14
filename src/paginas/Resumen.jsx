@@ -1,32 +1,21 @@
-import { useState } from 'react';
-import { api, useDatos, Kpi, Embudo, Evento, diaLindo, useAviso, pct } from '../ui.jsx';
+import { api, useDatos, Kpi, Embudo, Evento, diaLindo, useAviso, pct, BotonEnviarAhora, EstadoMotor } from '../ui.jsx';
 
 export default function Resumen() {
   const [d, recargar, error] = useDatos('resumen');
   const avisar = useAviso();
-  const [corriendo, setCorriendo] = useState(false);
   if (error) return <div className="aviso mal">{error}</div>;
   if (!d) return <div className="cargando">Cargando…</div>;
 
   const maxDia = Math.max(1, ...d.proyeccion.map((x) => Math.max(x.tope, x.salen + x.ya)));
   const pendientesProx = d.proyeccion.reduce((a, x) => a + x.salen, 0);
 
-  const tanda = async () => {
-    setCorriendo(true);
-    try {
-      const r = await api('tick', { metodo: 'POST', datos: { forzar: true } });
-      avisar(r.sinGmail ? 'Gmail no está conectado' : r.fueraDeHorario ? 'Fuera del horario de envío' : `Tanda: ${r.enviados} enviados${r.recordatorios ? `, ${r.recordatorios} recordatorios creados` : ''}`);
-      recargar();
-    } catch (e) { avisar(e.message, true); }
-    finally { setCorriendo(false); }
-  };
 
   return (
     <>
       <div className="cabecera">
         <div><h1>Resumen</h1><p>Cómo vienen tus promos.</p></div>
         <div className="acciones">
-          {d.modoPrueba && <button className="btn" onClick={tanda} disabled={corriendo}>{corriendo ? 'Enviando…' : 'Simular una tanda'}</button>}
+          {d.pendientes > 0 && <BotonEnviarAhora onListo={recargar} texto={d.modoPrueba ? 'Simular una tanda' : 'Enviar ahora'} />}
           <a className="btn primario" href="#/campanias/nueva">+ Nueva campaña</a>
         </div>
       </div>
@@ -35,6 +24,8 @@ export default function Resumen() {
       {!d.modoPrueba && !d.gmail.conectado && (
         <div className="aviso"><span><b>Gmail sin conectar.</b> Las campañas quedan en espera hasta que conectes el Gmail del proyecto.</span><a className="btn chico" href="#/ajustes">Conectar</a></div>
       )}
+
+      <EstadoMotor motor={d.motor} />
 
       <div className="kpis">
         <Kpi titulo="Contactos activos" valor={d.activos} detalle={d.frios ? `${d.frios} fríos` : `${d.contactos} en total`} />

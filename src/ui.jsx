@@ -191,3 +191,39 @@ export const Icono = {
   sellos: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /></svg>,
   ajustes: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>,
 };
+
+// ---------- Motor de envíos: «Enviar ahora» y última pasada ----------
+export function explicarPasada(r) {
+  if (!r) return '';
+  if (r.error) return `Error: ${r.error}`;
+  if (r.sinGmail) return 'Gmail no está conectado';
+  if (r.fueraDeHorario) return 'Fuera del horario de envío (Ajustes → Límites de envío)';
+  if (r.topeAlcanzado) return 'Ya se mandó el máximo de hoy: sigue mañana';
+  if (r.frenado) return `Gmail frenó el envío: ${r.frenado}`;
+  const partes = [`${r.enviados || 0} enviados`];
+  if (r.errores) partes.push(`${r.errores} con error`);
+  if (r.recordatorios) partes.push(`${r.recordatorios} recordatorios programados`);
+  return partes.join(', ');
+}
+
+export function BotonEnviarAhora({ onListo, texto = 'Enviar ahora' }) {
+  const avisar = useAviso();
+  const [corriendo, setCorriendo] = useState(false);
+  const enviar = async () => {
+    setCorriendo(true);
+    try { const r = await api('tick', { metodo: 'POST', datos: { forzar: true } }); avisar(explicarPasada(r), Boolean(r.error || r.frenado)); onListo?.(); }
+    catch (e) { avisar(e.message, true); }
+    finally { setCorriendo(false); }
+  };
+  return <button className="btn" onClick={enviar} disabled={corriendo} title="Manda ya lo que está programado hasta ahora (respeta el tope diario y el horario)">{corriendo ? 'Enviando…' : texto}</button>;
+}
+
+export function EstadoMotor({ motor }) {
+  if (!motor) return null;
+  const quien = { cron: 'automática', panel: 'automática', boton: 'con «Enviar ahora»' }[motor.resultado?.origen] || '';
+  return (
+    <p className="sub" style={{ margin: '0 0 16px' }}>
+      Envío automático: {motor.ultimo ? <>última pasada {hace(motor.ultimo)} {quien && `(${quien})`} · {explicarPasada(motor.resultado)}</> : 'todavía no corrió'}. Pasa cada 10 minutos.
+    </p>
+  );
+}

@@ -1,6 +1,6 @@
 // Motor de difusión: arma la cola de cada campaña, respeta el tope diario y el arranque gradual,
 // manda por tandas, crea los recordatorios y elige el asunto ganador.
-import { todos, uno, ejec, leerConfig, guardarConfig, registrarEvento } from './db.js';
+import { todos, uno, ejec, leerConfig, guardarConfig, registrarEvento, asegurarEsquema } from './db.js';
 import { diaAR, horaAR, msDeDiaHoraAR, sumarDias, diasEntre } from './util.js';
 import { armarMail, armarMime } from './plantilla.js';
 import { enviarRaw, revisarBandeja } from './gmail.js';
@@ -91,6 +91,21 @@ export async function proyectar(db, dias = 21) {
     salida.push({ dia, tope: i === 0 ? hoyCupo.tope : tope, ya: i === 0 ? hoyCupo.enviados : 0, salen: salen.length, atrasados: Math.max(0, listos.length - salen.length), porCampania });
   }
   return salida;
+}
+
+// Una pasada del motor, registrando cuándo fue y qué hizo (se ve en Resumen).
+export async function pasada(env, { base, origen, forzarVentana = false } = {}) {
+  const db = env.DB;
+  await asegurarEsquema(db);
+  const conf = await leerConfig(db);
+  base = base || env.BASE_URL || conf.base_url;
+  if (!base) return { sinDireccion: true };
+  await guardarConfig(db, 'ultimo_tick', Date.now());
+  let r;
+  try { r = await tick(env, db, { base, forzarVentana }); }
+  catch (e) { r = { error: e.message }; }
+  await guardarConfig(db, 'ultimo_tick_res', JSON.stringify({ ...r, origen, ts: Date.now() }));
+  return r;
 }
 
 // ---- La pasada del cron (cada 10 minutos) ----

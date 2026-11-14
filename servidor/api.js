@@ -2,7 +2,7 @@
 import { asegurarEsquema, todos, uno, ejec, leerConfig, guardarConfig, registrarEvento, CONFIG_DEFECTO } from './lib/db.js';
 import { crearClave, claveCorrecta, cookieSesion, cookieSalir, sesionValida } from './lib/auth.js';
 import { json, emailValido, usuarioSoundcloud, diaAR } from './lib/util.js';
-import { planificarCampania, proyectar, tick, cupoDeHoy, contactosFrios, mejorHora } from './lib/motor.js';
+import { planificarCampania, proyectar, pasada, cupoDeHoy, contactosFrios, mejorHora } from './lib/motor.js';
 import { armarMail, CUERPO_DEFECTO, RECORDATORIO_DEFECTO } from './lib/plantilla.js';
 import { gmailConfigurado, urlConsentimiento, completarConexion, desconectar } from './lib/gmail.js';
 
@@ -124,6 +124,7 @@ async function rutear(m, [a, b, c], ctx) {
       eventos,
       gmail: { configurado: gmailConfigurado(env, conf), conectado: Boolean(conf.gmail_refresh), email: conf.gmail_email || '' },
       modoPrueba: env.MODO_PRUEBA === '1',
+      motor: { ultimo: Number(conf.ultimo_tick || 0), resultado: (() => { try { return JSON.parse(conf.ultimo_tick_res || 'null'); } catch { return null; } })() },
     });
   }
 
@@ -275,7 +276,8 @@ async function rutear(m, [a, b, c], ctx) {
 
   // ---------- Calendario / motor ----------
   if (a === 'calendario' && m === 'GET') return json(await proyectar(db, Number(url.searchParams.get('dias')) || 21));
-  if (a === 'tick' && m === 'POST') return json(await tick(env, db, { base, forzarVentana: Boolean(cuerpo.forzar) && env.MODO_PRUEBA === '1' }));
+  // «Enviar ahora»: hace la pasada ya (respeta tope, horario y arranque gradual; en modo prueba puede saltear el horario)
+  if (a === 'tick' && m === 'POST') return json(await pasada(env, { base, origen: 'boton', forzarVentana: Boolean(cuerpo.forzar) && env.MODO_PRUEBA === '1' }));
 
   // ---------- Gmail ----------
   if (a === 'gmail') {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, useDatos, useAviso, ir, ChipCampania, Kpi, Embudo, Evento, pct, diaLindo, fechaCorta, TIPOS } from '../ui.jsx';
+import { api, useDatos, useAviso, ir, BotonEnviarAhora, ChipCampania, Kpi, Embudo, Evento, pct, diaLindo, fechaCorta, TIPOS } from '../ui.jsx';
 
 const FILTROS = [
   ['todos', 'Todos'],
@@ -76,6 +76,7 @@ export default function Campania({ id }) {
         </div>
         <div className="acciones">
           {c.estado === 'borrador' && <button className="btn primario" onClick={() => accion('activar', 'Campaña en marcha')}>Activar</button>}
+          {c.estado === 'activa' && c.pendientes > 0 && <BotonEnviarAhora onListo={recargar} />}
           {c.estado === 'activa' && <button className="btn" onClick={() => accion('pausar', 'Campaña pausada')}>Pausar</button>}
           {c.estado === 'pausada' && <button className="btn primario" onClick={() => accion('reanudar', 'Campaña reanudada')}>Reanudar</button>}
           {c.errores > 0 && <button className="btn" onClick={() => accion('reintentar', 'Se van a reintentar')}>Reintentar {c.errores} con error</button>}
