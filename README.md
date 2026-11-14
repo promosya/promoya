@@ -58,7 +58,7 @@ Si instalaste desde la compu: bajá la versión nueva y corré `npm run deploy`.
 
 **¿Por qué tengo que crear algo en Google Cloud?** Para que una app pueda mandar mails desde tu Gmail, Google pide que cada uno cree su propio permiso. Es gratis y se hace una sola vez. 
 
-**«Publicar app» aparece gris en Google Cloud.** Falta completar **Desarrollo de la marca**: nombre de la app, correo de asistencia, información de contacto del desarrollador y, en «Dominio de la app», la página principal, la política de privacidad (`/privacidad`), las condiciones (`/condiciones`) y tu dominio autorizado. La guía de Primeros pasos te muestra cada dato con un botón para copiarlo.
+**«Publicar app» aparece gris en Google Cloud.** Falta completar **Desarrollo de la marca**: nombre de la app, correo de asistencia, información de contacto del desarrollador y, en «Dominio de la app», la página principal, la política de privacidad (`/privacidad`), las condiciones (`/condiciones`) y tu dominio autorizado (si tu dirección es `promoya.tuusuario.workers.dev`, el dominio es solo `tuusuario.workers.dev`). La guía de Primeros pasos te muestra cada dato con un botón para copiarlo.
 
 **Al conectar Gmail sale «Google no ha verificado esta aplicación».** Es normal, porque la app es tuya y no pasó por la revisión de Google:
 1. Tocá **Configuración avanzada** (abajo a la izquierda). No toques «Volver a un sitio seguro».

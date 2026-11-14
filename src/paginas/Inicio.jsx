@@ -14,6 +14,15 @@ function Paso({ n, titulo, hecho, abierto, onAbrir, children, resumen }) {
   );
 }
 
+// Google pide el dominio «registrable»: en workers.dev y pages.dev es la parte propia + el sufijo
+// (promoya.fulano.workers.dev → fulano.workers.dev; movedeck-promos.pages.dev queda igual).
+function dominioAutorizado(origen) {
+  const host = origen.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+  const p = host.split('.');
+  if (host.endsWith('.workers.dev') || host.endsWith('.pages.dev')) return p.slice(-3).join('.');
+  return p.slice(-2).join('.');
+}
+
 function Copiar({ texto }) {
   const avisar = useAviso();
   return (
@@ -98,7 +107,7 @@ export default function Inicio({ onCambio }) {
                       <span className="sub">Página principal de la aplicación</span><Copiar texto={d.origen} />
                       <span className="sub">Vínculo a la Política de Privacidad</span><Copiar texto={`${d.origen}/privacidad`} />
                       <span className="sub">Vínculo a las Condiciones del Servicio</span><Copiar texto={`${d.origen}/condiciones`} />
-                      <span className="sub">Dominios autorizados → Agregar dominio</span><Copiar texto={d.origen.replace(/^https?:\/\//, '')} />
+                      <span className="sub">Dominios autorizados → Agregar un dominio (solo esto, sin «https://» ni nada adelante)</span><Copiar texto={dominioAutorizado(d.origen)} />
                     </div>
                     Tocá <b>Guardar</b>. <span className="sub">No subas logo: si subís uno, Google pide una revisión que tarda semanas.</span></li>
                   <li>Ahora entrá a <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noreferrer">Público ↗</a>, tocá <b>Publicar app</b> y confirmá. <span className="sub">(Si queda «en prueba», Google corta el permiso cada 7 días. Si el botón sigue gris, es porque falta algún dato del paso anterior.)</span></li>
