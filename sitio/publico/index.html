@@ -97,6 +97,10 @@ section{padding:80px 0}
 .guia a:not(.btn){color:var(--acento2)}
 .enlaces{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
 .btn.chico{padding:9px 14px;font-size:14px}
+.atasco{margin-top:16px;border:1px solid #4a3a12;background:#1d1708;border-radius:10px;padding:14px 16px}
+.atasco b:first-child{color:#ffd98a}
+.atasco p{margin:6px 0}
+.guia code,.atasco code{background:#0e0e0e;border:1px solid #333;border-radius:5px;padding:1px 6px;font-size:14px;overflow-wrap:anywhere}
 .oscuro{background:#0f0f0f;border-top:1px solid var(--borde);border-bottom:1px solid var(--borde)}
 
 /* pasos */
@@ -241,6 +245,15 @@ footer a{color:var(--suave)}
           <li>Tocá <b>Create and deploy</b> (crear y publicar) y esperá uno o dos minutos.</li>
         </ul>
         <p class="nota">Si es tu primera vez en Cloudflare, puede que te pida elegir un subdominio de <b>workers.dev</b>: poné tu nombre artístico sin espacios. Es parte de tu dirección.</p>
+        <div class="atasco">
+          <b>¿Te aparece «Select a repository» y se queda en «Loading…»?</b>
+          <p>Pasa si Cloudflare te pidió iniciar sesión en el medio y perdió el link. Tenés dos salidas:</p>
+          <ul>
+            <li><b>La fácil:</b> volvé a esta página y tocá otra vez <b>«Instalar en mi Cloudflare»</b>. Como ya entraste, ahora va directo.</li>
+            <li><b>Desde esa misma pantalla:</b> tocá <b>«Clone a public repository via Git URL»</b>, pegá <code>https://github.com/promosya/promoya</code> y tocá <b>Next</b>. Dejá el nombre <b>promoya</b> y los comandos como vienen, y tocá <b>Deploy</b>.<br>
+            Por este camino no te pide el nombre artístico, así que cargalo después: entrá a tu worker <b>promoya</b> → <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b> → tipo <b>Secret</b>, nombre <code>NOMBRE_ARTISTICO</code> y como valor tu nombre artístico → <b>Deploy</b>.</li>
+          </ul>
+        </div>
       </li>
       <li>
         <h3>Abrí tu dirección</h3>

@@ -5,6 +5,8 @@
   "name": "promoya",
   "main": "servidor/index.js",
   "compatibility_date": "2026-09-01",
+  // Arma el panel antes de publicar (así funciona con el botón, con «Clone a public repository» o a mano)
+  "build": { "command": "npm run build", "watch_dir": "src" },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
