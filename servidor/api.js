@@ -2,7 +2,7 @@
 import { asegurarEsquema, todos, uno, ejec, leerConfig, guardarConfig, registrarEvento, CONFIG_DEFECTO } from './lib/db.js';
 import { crearClave, claveCorrecta, cookieSesion, cookieSalir, sesionValida } from './lib/auth.js';
 import { json, emailValido, usuarioSoundcloud, diaAR } from './lib/util.js';
-import { planificarCampania, proyectar, pasada, cupoDeHoy, contactosFrios, mejorHora } from './lib/motor.js';
+import { planificarCampania, proyectar, pasada, cupoDeHoy, contactosFrios, mejorHora, candidatosCampania, agregarGruposCampania } from './lib/motor.js';
 import { armarMail, CUERPO_DEFECTO, RECORDATORIO_DEFECTO } from './lib/plantilla.js';
 import { gmailConfigurado, urlConsentimiento, completarConexion, desconectar } from './lib/gmail.js';
 
@@ -235,6 +235,9 @@ async function rutear(m, [a, b, c], ctx) {
     }
     if (id && c === 'pausar' && m === 'POST') { await ejec(db, "UPDATE campanias SET estado = 'pausada' WHERE id = ? AND estado = 'activa'", id); return json({ ok: true }); }
     if (id && c === 'reanudar' && m === 'POST') { await ejec(db, "UPDATE campanias SET estado = 'activa' WHERE id = ? AND estado = 'pausada'", id); return json({ ok: true }); }
+    // Reenviar: sumar grupos nuevos a una campaña que ya arrancó (uno por día)
+    if (id && c === 'candidatos' && m === 'GET') return json(await candidatosCampania(db, id));
+    if (id && c === 'agregar-grupos' && m === 'POST') return json(await agregarGruposCampania(db, id, cuerpo.grupos, cuerpo.inicio));
     if (id && c === 'reintentar' && m === 'POST') {
       const r = await ejec(db, "UPDATE envios SET estado = 'pendiente', error = NULL WHERE campania_id = ? AND estado = 'error'", id);
       return json({ ok: true, cantidad: r.meta.changes });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, useDatos, useAviso } from '../ui.jsx';
+import { bajarPlanilla } from './Contactos.jsx';
 
 function Paso({ n, titulo, hecho, abierto, onAbrir, children, resumen }) {
   return (
@@ -140,8 +141,15 @@ export default function Inicio({ onCambio }) {
       </Paso>
 
       <Paso n={3} titulo="Cargar tus contactos" hecho={hechos[2]} abierto={abierto === 3} onAbrir={abrir(3)} resumen={d.contactos ? `${d.contactos} contactos${d.sinSoundcloud ? ` · ${d.sinSoundcloud} sin usuario de SoundCloud` : ''}` : 'DJs, sellos, radios…'}>
-        <p className="sub" style={{ marginTop: 0 }}>Importá un CSV (desde Excel: Guardar como CSV, o desde Contactos de Google: Exportar). Columnas: <b>nombre, email, soundcloud, tipo, país, etiquetas</b>. Cargá el usuario de SoundCloud de cada uno: así la plataforma sabe cuándo te escucharon.</p>
-        <a className="btn primario" href="#/contactos">Ir a Contactos</a>
+        <ol className="instrucciones">
+          <li>Descargá la <b>planilla base</b> de Excel.</li>
+          <li>Completala con un contacto por fila: <b>email</b> (obligatorio), nombre, <b>soundcloud</b>, tipo, país y etiquetas. Con el usuario de SoundCloud de cada uno, la plataforma sabe cuándo te escucharon.</li>
+          <li>Guardala y subila en <b>Contactos → Importar</b>: se cargan todos de una.</li>
+        </ol>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" onClick={bajarPlanilla}>⬇ Descargar planilla</button>
+          <a className="btn primario" href="#/contactos">Ir a Contactos</a>
+        </div>
       </Paso>
 
       <Paso n={4} titulo="Armar grupos" hecho={hechos[3]} abierto={abierto === 4} onAbrir={abrir(4)} resumen={d.grupos ? `${d.grupos} grupos` : 'Cada día de una campaña sale un grupo'}>

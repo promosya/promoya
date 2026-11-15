@@ -121,6 +121,7 @@ export const ICONOS_EVENTO = {
   envio: ['→', 'Se le envió', ''],
   recordatorio: ['⟳', 'Se le mandó el recordatorio', ''],
   ab: ['A/B', 'Asunto ganador', 'aviso'],
+  grupos: ['＋', 'Se sumaron grupos', 'acento'],
 };
 
 export function Evento({ ev, conCampania = true, conContacto = true }) {

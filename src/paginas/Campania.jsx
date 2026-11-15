@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import AgregarGrupos from './AgregarGrupos.jsx';
 import { api, useDatos, useAviso, ir, BotonEnviarAhora, ChipCampania, Kpi, Embudo, Evento, pct, diaLindo, fechaCorta, TIPOS } from '../ui.jsx';
 
 const FILTROS = [
@@ -26,6 +27,7 @@ export default function Campania({ id }) {
   const avisar = useAviso();
   const [filtro, setFiltro] = useState('todos');
   const [busca, setBusca] = useState('');
+  const [reenviar, setReenviar] = useState(false);
   if (error) return <div className="aviso mal">{error}</div>;
   if (!c) return <div className="cargando">Cargando…</div>;
 
@@ -80,6 +82,7 @@ export default function Campania({ id }) {
           {c.estado === 'activa' && <button className="btn" onClick={() => accion('pausar', 'Campaña pausada')}>Pausar</button>}
           {c.estado === 'pausada' && <button className="btn primario" onClick={() => accion('reanudar', 'Campaña reanudada')}>Reanudar</button>}
           {c.errores > 0 && <button className="btn" onClick={() => accion('reintentar', 'Se van a reintentar')}>Reintentar {c.errores} con error</button>}
+          {c.estado !== 'borrador' && <button className="btn" onClick={() => setReenviar(true)}>↻ Reenviar a más grupos</button>}
           <a className="btn" href={`#/campanias/${id}/editar`}>Editar</a>
           {c.estado !== 'activa' && <button className="btn fantasma peligro" onClick={borrar}>Borrar</button>}
         </div>
@@ -176,6 +179,7 @@ export default function Campania({ id }) {
         {c.eventos.length ? <div className="feed">{c.eventos.map((ev) => <Evento key={ev.id} ev={ev} conCampania={false} />)}</div>
           : <div className="vacio" style={{ padding: 20 }}>Todavía no hay movimiento.</div>}
       </div>
+      {reenviar && <AgregarGrupos campania={c} onCerrar={() => setReenviar(false)} onListo={() => { setReenviar(false); recargar(); }} />}
     </>
   );
 }

@@ -71,6 +71,66 @@ export async function planificarCampania(db, campaniaId) {
   return { total, inicio };
 }
 
+// Grupos que se pueden sumar a una campaña ya activada, con cuántos contactos todavía no la recibieron.
+export async function candidatosCampania(db, campaniaId) {
+  const ultimo = await uno(db, 'SELECT MAX(dia) AS dia FROM campania_grupos WHERE campania_id = ?', campaniaId);
+  const hoy = diaAR();
+  const proximo = ultimo?.dia && sumarDias(ultimo.dia, 1) > hoy ? sumarDias(ultimo.dia, 1) : hoy;
+  const grupos = await todos(db, `SELECT g.id, g.nombre,
+      SUM(CASE WHEN c.estado = 'activo' THEN 1 ELSE 0 END) AS activos,
+      SUM(CASE WHEN c.estado = 'activo' AND NOT EXISTS (SELECT 1 FROM envios e WHERE e.campania_id = ? AND e.contacto_id = c.id AND e.tipo = 'principal') THEN 1 ELSE 0 END) AS nuevos,
+      EXISTS (SELECT 1 FROM campania_grupos cg WHERE cg.campania_id = ? AND cg.grupo_id = g.id) AS en_campania
+    FROM grupos g LEFT JOIN grupo_contactos gc ON gc.grupo_id = g.id LEFT JOIN contactos c ON c.id = gc.contacto_id
+    GROUP BY g.id ORDER BY g.nombre COLLATE NOCASE`, campaniaId, campaniaId);
+  return { proximo, hoy, grupos };
+}
+
+// Suma grupos a una campaña que ya arrancó: uno por día desde «inicio». Solo se programa a quien todavía no la recibió
+// (así se puede volver a elegir un grupo de la campaña para mandarle a los contactos que se agregaron después).
+export async function agregarGruposCampania(db, campaniaId, grupos, inicio) {
+  const config = await leerConfig(db);
+  const camp = await uno(db, 'SELECT * FROM campanias WHERE id = ?', campaniaId);
+  if (!camp) throw new Error('No existe la campaña');
+  if (camp.estado === 'borrador') throw new Error('La campaña todavía no arrancó: elegí los grupos desde «Editar»');
+  const ids = [...new Set((grupos || []).map(Number).filter(Boolean))];
+  if (!ids.length) throw new Error('Elegí al menos un grupo');
+  const hoy = diaAR();
+  const desde = /^\d{4}-\d{2}-\d{2}$/.test(inicio || '') && inicio >= hoy ? inicio : (await candidatosCampania(db, campaniaId)).proximo;
+  const max = await uno(db, 'SELECT MAX(orden) AS o FROM campania_grupos WHERE campania_id = ?', campaniaId);
+  let orden = (max?.o ?? -1) + 1;
+  const vistos = new Set((await todos(db, "SELECT contacto_id FROM envios WHERE campania_id = ? AND tipo = 'principal'", campaniaId)).map((x) => x.contacto_id));
+  const lote = [];
+  const detalle = [];
+  let total = 0;
+  for (const [k, gid] of ids.entries()) {
+    const dia = sumarDias(desde, k);
+    const g = await uno(db, 'SELECT nombre FROM grupos WHERE id = ?', gid);
+    if (!g) continue;
+    const ya = await uno(db, 'SELECT orden FROM campania_grupos WHERE campania_id = ? AND grupo_id = ?', campaniaId, gid);
+    if (ya) lote.push(db.prepare('UPDATE campania_grupos SET dia = ? WHERE campania_id = ? AND grupo_id = ?').bind(dia, campaniaId, gid));
+    else lote.push(db.prepare('INSERT INTO campania_grupos (campania_id, grupo_id, orden, dia) VALUES (?, ?, ?, ?)').bind(campaniaId, gid, orden++, dia));
+    const cts = await todos(db, `SELECT c.id FROM contactos c JOIN grupo_contactos gc ON gc.contacto_id = c.id
+      WHERE gc.grupo_id = ? AND c.estado = 'activo' ORDER BY c.id`, gid);
+    let n = 0;
+    for (const c of cts) {
+      if (vistos.has(c.id)) continue;
+      vistos.add(c.id);
+      const { hora } = await mejorHora(db, c.id, config);
+      lote.push(db.prepare(`INSERT OR IGNORE INTO envios (token, campania_id, contacto_id, grupo_id, tipo, variante, programado)
+        VALUES (?, ?, ?, ?, 'principal', NULL, ?)`).bind(crypto.randomUUID().replace(/-/g, '').slice(0, 18), campaniaId, c.id, gid, msDeDiaHoraAR(dia, hora, minutoAzar())));
+      n++;
+    }
+    total += n;
+    detalle.push({ grupo: g.nombre, dia, mails: n });
+  }
+  if (!total) throw new Error('Todos los contactos de esos grupos ya recibieron esta campaña');
+  // Si estaba terminada, vuelve a enviarse sola. Si estaba pausada, queda pausada hasta que la reanudes.
+  if (camp.estado === 'terminada') lote.push(db.prepare("UPDATE campanias SET estado = 'activa' WHERE id = ?").bind(campaniaId));
+  for (let i = 0; i < lote.length; i += 90) await db.batch(lote.slice(i, i + 90));
+  await registrarEvento(db, { campania_id: campaniaId, tipo: 'grupos', detalle: detalle.map((d) => `${d.grupo} (${d.mails})`).join(', ') });
+  return { total, desde, detalle, pausada: camp.estado === 'pausada' };
+}
+
 // Proyección de los próximos días: cuántos salen cada día respetando el tope (lo que no entra pasa al día siguiente).
 export async function proyectar(db, dias = 21) {
   const config = await leerConfig(db);

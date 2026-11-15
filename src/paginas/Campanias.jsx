@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useDatos, ChipCampania, pct, diaLindo } from '../ui.jsx';
+import AgregarGrupos from './AgregarGrupos.jsx';
 
 export default function Campanias() {
-  const [lista, , error] = useDatos('campanias');
+  const [lista, recargar, error] = useDatos('campanias');
+  const [reenviar, setReenviar] = useState(null);
   if (error) return <div className="aviso mal">{error}</div>;
   if (!lista) return <div className="cargando">Cargando…</div>;
   return (
@@ -18,7 +21,8 @@ export default function Campanias() {
             const total = c.contactos || 0;
             const prox = c.grupos.find((g) => g.dia && c.estado === 'activa' && g.dia >= new Date().toISOString().slice(0, 10));
             return (
-              <a key={c.id} className="camp" href={`#/campanias/${c.id}`}>
+              <div key={c.id} className="camp-envoltura">
+              <a className="camp" href={`#/campanias/${c.id}`}>
                 {c.imagen ? <img className="portada" src={c.imagen} alt="" /> : <span className="portada" />}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -39,10 +43,15 @@ export default function Campanias() {
                   <div><b>{c.escuchadas}</b><small>Escucharon</small></div>
                 </div>
               </a>
+              {c.estado !== 'borrador' && (
+                <button className="btn reenviar" onClick={() => setReenviar(c)} title="Mandar esta campaña a más grupos, uno por día">↻ Reenviar a más grupos</button>
+              )}
+              </div>
             );
           })}
         </div>
       )}
+      {reenviar && <AgregarGrupos campania={reenviar} onCerrar={() => setReenviar(null)} onListo={() => { setReenviar(null); recargar(); }} />}
     </>
   );
 }

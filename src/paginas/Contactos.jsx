@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { api, useDatos, useAviso, ir, Modal, ChipContacto, TIPOS, pct, hace } from '../ui.jsx';
+import { plantillaContactos, armarXlsx, descargar, leerXlsx, textoDeCsv } from '../planilla.js';
 
 // CSV/TSV simple con comillas
 function parsearCSV(txt) {
@@ -30,8 +31,11 @@ const COLUMNAS = {
   notas: /^(notas?|notes?|comentarios?)$/i,
 };
 
-function filasDeCSV(txt) {
-  const t = parsearCSV(txt.trim());
+const filasDeCSV = (txt) => filasDeTabla(parsearCSV(txt.trim()));
+
+// Convierte una tabla (de Excel o CSV) en contactos, reconociendo las columnas por su título
+function filasDeTabla(t) {
+  t = t.map((f) => f.map((x) => String(x ?? '')));
   if (!t.length) return [];
   const cab = t[0].map((h) => h.trim());
   const mapa = {};
@@ -97,17 +101,31 @@ export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
   );
 }
 
+export const bajarPlanilla = () => descargar(plantillaContactos(), 'planilla-contactos-promoya.xlsx');
+
 function Importar({ onCerrar, onListo }) {
   const avisar = useAviso();
   const [txt, setTxt] = useState('');
+  const [deArchivo, setDeArchivo] = useState(null); // contactos leídos de un archivo
+  const [nombreArchivo, setNombreArchivo] = useState('');
   const [subiendo, setSubiendo] = useState(false);
-  const filas = useMemo(() => filasDeCSV(txt), [txt]);
-  const archivo = (e) => { const a = e.target.files[0]; if (a) a.text().then(setTxt); };
+  const filas = useMemo(() => (deArchivo ?? filasDeCSV(txt)).filter((f) => f.email || f.nombre), [txt, deArchivo]);
+  const conEjemplo = filas.some((f) => /^(dj\.ejemplo@gmail\.com|demos@selloejemplo\.com)$/i.test(f.email));
+  const archivo = async (e) => {
+    const a = e.target.files[0];
+    if (!a) return;
+    try {
+      if (/\.xls$/i.test(a.name)) throw new Error('Ese Excel es del formato viejo (.xls): guardalo como .xlsx y probá de nuevo');
+      const leidas = /\.xlsx$/i.test(a.name) ? filasDeTabla(await leerXlsx(await a.arrayBuffer())) : filasDeCSV(await textoDeCsv(a));
+      if (!leidas.length) throw new Error('No encontré contactos: fijate que la planilla tenga la columna «email»');
+      setDeArchivo(leidas); setNombreArchivo(a.name); setTxt('');
+    } catch (x) { avisar(x.message, true); }
+  };
   const importar = async () => {
     setSubiendo(true);
     try {
       const r = await api('contactos/importar', { metodo: 'POST', datos: { filas } });
-      avisar(`${r.nuevos} nuevos, ${r.actualizados} actualizados${r.errores.length ? `, ${r.errores.length} con error` : ''}`);
+      avisar(`${r.nuevos} nuevos, ${r.actualizados} actualizados${r.errores.length ? `, ${r.errores.length} con error` : ''}`, r.errores.length > 0);
       onListo();
     } catch (e) { avisar(e.message, true); }
     finally { setSubiendo(false); }
@@ -115,15 +133,31 @@ function Importar({ onCerrar, onListo }) {
   return (
     <Modal titulo="Importar contactos" onCerrar={onCerrar} pie={<>
       <button className="btn fantasma" onClick={onCerrar}>Cancelar</button>
-      <button className="btn primario" disabled={!filas.length || subiendo} onClick={importar}>Importar {filas.length || ''}</button>
+      <button className="btn primario" disabled={!filas.length || subiendo} onClick={importar}>{subiendo ? 'Importando…' : `Importar ${filas.length || ''}`}</button>
     </>}>
-      <p className="sub" style={{ marginTop: 0 }}>Subí un CSV (Excel → Guardar como CSV, o Contactos de Google → Exportar) o pegá la lista. Columnas que reconozco: <b>nombre, email, soundcloud, tipo, país, etiquetas, notas</b>. Si un email ya existe, se actualiza.</p>
-      <div className="campo"><input type="file" accept=".csv,.tsv,.txt,text/csv" onChange={archivo} aria-label="Archivo CSV" /></div>
-      <div className="campo"><textarea rows={7} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={'nombre,email,soundcloud,tipo\nDJ Fulano,fulano@mail.com,soundcloud.com/djfulano,dj'} aria-label="Pegar lista" /></div>
+      <ol className="instrucciones">
+        <li><b>Descargá la planilla base</b> y abrila con Excel o Google Sheets.
+          <div style={{ marginTop: 8 }}><button className="btn chico" onClick={bajarPlanilla}>⬇ Descargar planilla (.xlsx)</button></div></li>
+        <li>En la hoja <b>Contactos</b>, borrá las dos filas de ejemplo y cargá <b>un contacto por fila</b>, sin cambiar los títulos de la fila 1. Solo el <b>email</b> es obligatorio; cargá también su <b>soundcloud</b> para saber quién te escuchó.</li>
+        <li>Guardá el archivo como está (<b>.xlsx</b>). Desde Google Sheets: Archivo → Descargar → Microsoft Excel (.xlsx).</li>
+        <li>Elegí el archivo acá abajo, revisá la lista y tocá <b>Importar</b>. Si un email ya estaba cargado, se actualiza (no se duplica).</li>
+      </ol>
+      <div className="campo">
+        <label htmlFor="arch">Archivo (.xlsx o .csv)</label>
+        <input id="arch" type="file" accept=".xlsx,.csv,.tsv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={archivo} />
+        {nombreArchivo && <span className="ayuda">{nombreArchivo}: {filas.length} contactos. <button type="button" className="btn chico fantasma" onClick={() => { setDeArchivo(null); setNombreArchivo(''); }}>Quitar</button></span>}
+      </div>
+      {!deArchivo && (
+        <details style={{ marginBottom: 12 }}>
+          <summary className="sub" style={{ cursor: 'pointer' }}>O pegá la lista (copiada de Excel o separada por comas)</summary>
+          <textarea rows={6} style={{ marginTop: 8 }} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={'nombre,email,soundcloud,tipo\nDJ Fulano,fulano@mail.com,soundcloud.com/djfulano,DJ'} aria-label="Pegar lista" />
+        </details>
+      )}
+      {conEjemplo && <div className="aviso">Quedaron las filas de ejemplo de la planilla («DJ Ejemplo» y «Sello Ejemplo»): borralas del Excel antes de importar.</div>}
       {filas.length > 0 && (
         <div className="tabla-envoltura" style={{ maxHeight: 220 }}>
           <table><thead><tr><th>Nombre</th><th>Email</th><th>SoundCloud</th><th>Tipo</th></tr></thead>
-            <tbody>{filas.slice(0, 50).map((f, i) => <tr key={i}><td>{f.nombre}</td><td>{f.email}</td><td>{f.soundcloud}</td><td>{f.tipo}</td></tr>)}</tbody></table>
+            <tbody>{filas.slice(0, 50).map((f, i) => <tr key={i}><td>{f.nombre}</td><td>{f.email || <span className="chip mal">falta email</span>}</td><td>{f.soundcloud}</td><td>{f.tipo}</td></tr>)}</tbody></table>
         </div>
       )}
       {filas.length > 50 && <p className="sub">… y {filas.length - 50} más.</p>}
@@ -132,13 +166,9 @@ function Importar({ onCerrar, onListo }) {
 }
 
 function exportar(lista) {
-  const cab = ['nombre', 'email', 'soundcloud', 'tipo', 'pais', 'etiquetas', 'estado', 'recibidas', 'abiertas', 'clics', 'escuchadas', 'respuestas', 'notas'];
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = [cab.join(','), ...lista.map((c) => cab.map((k) => esc(c[k])).join(','))].join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
-  a.download = 'contactos-movedeck.csv';
-  a.click();
+  const cab = ['nombre', 'email', 'soundcloud', 'tipo', 'pais', 'etiquetas', 'notas', 'estado', 'recibidas', 'abiertas', 'clics', 'escuchadas', 'respuestas'];
+  const filas = [cab, ...lista.map((c) => cab.map((k) => (k === 'tipo' ? TIPOS[c.tipo] || c.tipo : c[k])))];
+  descargar(armarXlsx([{ nombre: 'Contactos', filas, opciones: { anchos: [24, 30, 26, 12, 14, 22, 30, 10, 10, 10, 8, 10, 11] } }]), 'contactos-promoya.xlsx');
 }
 
 export default function Contactos() {
@@ -167,6 +197,7 @@ export default function Contactos() {
       <div className="cabecera">
         <div><h1>Contactos</h1><p>{lista.length} contactos · {lista.filter((c) => c.estado === 'activo').length} activos</p></div>
         <div className="acciones">
+          <button className="btn" onClick={bajarPlanilla} title="Planilla de Excel para completar con tus contactos e importarlos todos de una">⬇ Planilla base</button>
           <button className="btn" onClick={() => exportar(vis)} disabled={!vis.length}>Exportar</button>
           <button className="btn" onClick={() => setModal('importar')}>Importar</button>
           <button className="btn primario" onClick={() => setModal('nuevo')}>+ Contacto</button>
@@ -189,8 +220,11 @@ export default function Contactos() {
       </div>
 
       {!lista.length ? (
-        <div className="tarjeta vacio"><b>Cargá tus contactos</b>Importá tu lista de DJs desde un CSV o agregalos de a uno.
-          <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'center' }}><button className="btn primario" onClick={() => setModal('importar')}>Importar CSV</button></div></div>
+        <div className="tarjeta vacio"><b>Cargá tus contactos</b>Descargá la planilla base, completala en Excel y subila: se cargan todos de una. También podés agregarlos de a uno.
+          <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={bajarPlanilla}>⬇ Descargar planilla</button>
+            <button className="btn primario" onClick={() => setModal('importar')}>Importar planilla</button>
+          </div></div>
       ) : (
         <div className="tabla-envoltura">
           <table>
