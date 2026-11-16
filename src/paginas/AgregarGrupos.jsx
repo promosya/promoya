@@ -65,7 +65,7 @@ export default function AgregarGrupos({ campania, onCerrar, onListo }) {
                   <input type="checkbox" checked={elegido} disabled={sinNuevos && !elegido} onChange={() => alternar(g.id)} aria-label={`Elegir ${g.nombre}`} style={{ accentColor: 'var(--acento)' }} />
                   {elegido && <span className="orden">{i + 1}</span>}
                   <div style={{ minWidth: 0 }}>
-                    <b>{g.nombre}</b>{' '}
+                    <b>{g.nombre}</b>{' '}{g.lista === 'usuarios' && <span className="chip azul">Usuarios</span>}{' '}
                     <span className="sub">{sinNuevos ? (g.activos ? 'ya la recibieron todos' : 'sin contactos activos') : `${g.nuevos} sin recibirla${g.en_campania ? ' (nuevos en el grupo)' : ''}`}</span>
                     {elegido && inicio && <div className="sub">{diaLindo(sumarDias(inicio, i))}</div>}
                   </div>

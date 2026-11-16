@@ -7,6 +7,7 @@ import Campanias from './paginas/Campanias.jsx';
 import EditorCampania from './paginas/EditorCampania.jsx';
 import Campania from './paginas/Campania.jsx';
 import Contactos from './paginas/Contactos.jsx';
+import Usuarios from './paginas/Usuarios.jsx';
 import Ficha from './paginas/Ficha.jsx';
 import Grupos from './paginas/Grupos.jsx';
 import Ajustes from './paginas/Ajustes.jsx';
@@ -17,6 +18,7 @@ const NAV = [
   ['resumen', 'Resumen'],
   ['campanias', 'Campañas'],
   ['contactos', 'Contactos'],
+  ['usuarios', 'Usuarios'],
   ['grupos', 'Grupos'],
   ['ajustes', 'Ajustes'],
 ];
@@ -89,6 +91,7 @@ function App() {
   else if (seccion === 'campanias') pagina = <Campanias />;
   else if (seccion === 'contactos' && id) pagina = <Ficha id={id} />;
   else if (seccion === 'contactos') pagina = <Contactos />;
+  else if (seccion === 'usuarios') pagina = <Usuarios />;
   else if (seccion === 'grupos') pagina = <Grupos />;
   else if (seccion === 'ajustes') pagina = <Ajustes />;
   else if (seccion === 'inicio' || (seccion === 'resumen' && !location.hash.replace(/^#\/?/, '') && !sesion.configurado)) pagina = <Inicio onCambio={revisar} />;

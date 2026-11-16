@@ -135,7 +135,7 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
 .embudo .paso b { text-align: right; font-variant-numeric: tabular-nums; }
 
 .dias { display: grid; gap: 6px; }
-.dia { display: grid; grid-template-columns: 92px 1fr 64px; gap: 10px; align-items: center; font-size: 13px; }
+.dia { display: grid; grid-template-columns: 150px 1fr 70px; gap: 10px; align-items: center; font-size: 13px; }
 .dia .pista { height: 16px; background: var(--panel2); border-radius: 4px; position: relative; overflow: hidden; }
 .dia .pista i { position: absolute; inset: 0 auto 0 0; background: var(--acento); border-radius: 4px; }
 .dia .pista i.ya { background: #7a3a0e; }

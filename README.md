@@ -19,6 +19,9 @@ Cada uno instala **su propia copia gratis en su cuenta de Cloudflare**: los cont
 - **Dos asuntos distintos (A/B):** el primer grupo recibe mitad y mitad, y el resto recibe el que más se abrió.
 - **Ficha de cada contacto** con todo su historial, y **contactos fríos** (los que no abren nunca).
 - **Usuario de SoundCloud por contacto,** para saber quién te escuchó.
+- **Contactos y usuarios separados:** tus DJs, sellos y radios por un lado, y la gente que descargó tu música (por ejemplo, las listas de Hypeddit) por el otro. Se suben tal cual, van en grupos de hasta 490 y nunca el mismo día. Si el mail de un usuario rebota, se borra solo.
+- **Planilla base de Excel** para cargar todos tus contactos de una vez, y exportación de nombres y emails de todos juntos.
+- **Reenviar a más grupos:** sumás grupos a una campaña que ya arrancó y se siguen mandando solos.
 - Funciona en la compu y en el celular (se puede agregar a la pantalla de inicio como app).
 
 ## Instalar tu copia (gratis)

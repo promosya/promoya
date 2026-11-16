@@ -21,13 +21,15 @@ function parsearCSV(txt) {
   return filas.filter((f) => f.some((x) => x.trim()));
 }
 
+// Títulos de columna que se reconocen (en castellano, inglés y los que exportan Hypeddit y similares)
 const COLUMNAS = {
-  nombre: /^(nombre|name|artista|artist|dj|contacto)$/i,
-  email: /^(e-?mail|correo|mail)$/i,
+  nombre: /^(nombre|name|full ?name|nombre completo|first ?name|artista|artist|dj|contacto|username|usuario)$/i,
+  email: /^(e-?mail|correo|mail|e-?mail address|direcci[oó]n de correo)$/i,
   soundcloud: /soundcloud|^sc$/i,
   tipo: /^(tipo|type|rol|categor[ií]a)$/i,
-  pais: /^(pa[ií]s|country|ciudad|city)$/i,
+  pais: /^(pa[ií]s|country|ciudad|city|location|ubicaci[oó]n)$/i,
   etiquetas: /^(etiquetas?|tags?|g[eé]nero)$/i,
+  origen: /^(track|tema|lanzamiento|release|gate|download|descarga|campaign|campa[ñn]a|fuente|source|title|t[ií]tulo|product)( ?name| ?title)?$/i,
   notas: /^(notas?|notes?|comentarios?)$/i,
 };
 
@@ -51,12 +53,17 @@ function filasDeTabla(t) {
     const nom = t[0].findIndex((x, j) => j !== i && j !== sc && x.trim());
     if (nom >= 0) mapa.nombre = nom;
   }
-  return cuerpo.map((f) => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, (f[i] || '').trim()])));
+  return cuerpo.map((f) => {
+    const x = Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, (f[i] || '').trim()]));
+    // El tema que descargó (Hypeddit) queda como etiqueta, para poder armar grupos por lanzamiento
+    if (x.origen) { x.etiquetas = [x.etiquetas, x.origen].filter(Boolean).join(', '); delete x.origen; }
+    return x;
+  });
 }
 
 export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
   const avisar = useAviso();
-  const [f, setF] = useState({ nombre: '', email: '', soundcloud: '', tipo: 'dj', pais: '', etiquetas: '', notas: '', estado: 'activo', ...inicial });
+  const [f, setF] = useState({ nombre: '', email: '', soundcloud: '', tipo: 'dj', pais: '', etiquetas: '', notas: '', estado: 'activo', lista: 'contactos', ...inicial });
   const [guardando, setGuardando] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const guardar = async (e) => {
@@ -82,6 +89,11 @@ export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
         <span className="ayuda">Con esto la plataforma sabe que, si ese usuario aparece escuchando en SoundCloud, es este contacto.</span>
       </div>
       <div className="fila">
+        <div className="campo"><label htmlFor="cli">Lista</label>
+          <select id="cli" value={f.lista} onChange={set('lista')}>
+            <option value="contactos">Contactos (DJs, sellos…)</option>
+            <option value="usuarios">Usuarios (descargaron tu música)</option>
+          </select></div>
         <div className="campo"><label htmlFor="ct">Tipo</label>
           <select id="ct" value={f.tipo} onChange={set('tipo')}>{Object.entries(TIPOS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>
         <div className="campo"><label htmlFor="cp">País / ciudad</label><input id="cp" type="text" value={f.pais} onChange={set('pais')} /></div>
@@ -103,8 +115,10 @@ export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
 
 export const bajarPlanilla = () => descargar(plantillaContactos(), 'planilla-contactos-promoya.xlsx');
 
-function Importar({ onCerrar, onListo }) {
+export function Importar({ onCerrar, onListo, lista = 'contactos' }) {
   const avisar = useAviso();
+  const usuarios = lista === 'usuarios';
+  const [etiqueta, setEtiqueta] = useState('');
   const [txt, setTxt] = useState('');
   const [deArchivo, setDeArchivo] = useState(null); // contactos leídos de un archivo
   const [nombreArchivo, setNombreArchivo] = useState('');
@@ -124,17 +138,32 @@ function Importar({ onCerrar, onListo }) {
   const importar = async () => {
     setSubiendo(true);
     try {
-      const r = await api('contactos/importar', { metodo: 'POST', datos: { filas } });
-      avisar(`${r.nuevos} nuevos, ${r.actualizados} actualizados${r.errores.length ? `, ${r.errores.length} con error` : ''}`, r.errores.length > 0);
+      const r = await api('contactos/importar', { metodo: 'POST', datos: { filas, lista, etiqueta } });
+      const malos = r.totalErrores ?? r.errores.length;
+      avisar(`${r.nuevos} nuevos, ${r.actualizados} ya estaban${malos ? `, ${malos} con email inválido (no se cargaron)` : ''}`, false);
       onListo();
     } catch (e) { avisar(e.message, true); }
     finally { setSubiendo(false); }
   };
   return (
-    <Modal titulo="Importar contactos" onCerrar={onCerrar} pie={<>
+    <Modal titulo={usuarios ? 'Importar usuarios' : 'Importar contactos'} onCerrar={onCerrar} pie={<>
       <button className="btn fantasma" onClick={onCerrar}>Cancelar</button>
       <button className="btn primario" disabled={!filas.length || subiendo} onClick={importar}>{subiendo ? 'Importando…' : `Importar ${filas.length || ''}`}</button>
     </>}>
+      {usuarios ? (
+        <>
+          <ol className="instrucciones">
+            <li>Descargá la lista de gente que bajó tu tema desde <b>Hypeddit</b> (o la plataforma que uses): el archivo <b>CSV o Excel</b> de cada lanzamiento.</li>
+            <li>Subilo acá <b>tal cual</b>: reconozco solo las columnas de email, nombre, país y tema. No hace falta tocar nada.</li>
+            <li>Si querés, poné de qué lanzamiento son (queda como etiqueta y después podés armar grupos por tema).</li>
+            <li>Revisá la lista y tocá <b>Importar</b>. Los mails repetidos se juntan (no se duplican) y los que están mal escritos se descartan.</li>
+          </ol>
+          <div className="campo">
+            <label htmlFor="etq">Lanzamiento (opcional)</label>
+            <input id="etq" type="text" value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} placeholder="Ej: Brother Louie 98 (Movedeck Rework)" />
+          </div>
+        </>
+      ) : (
       <ol className="instrucciones">
         <li><b>Descargá la planilla base</b> y abrila con Excel o Google Sheets.
           <div style={{ marginTop: 8 }}><button className="btn chico" onClick={bajarPlanilla}>⬇ Descargar planilla (.xlsx)</button></div></li>
@@ -142,6 +171,7 @@ function Importar({ onCerrar, onListo }) {
         <li>Guardá el archivo como está (<b>.xlsx</b>). Desde Google Sheets: Archivo → Descargar → Microsoft Excel (.xlsx).</li>
         <li>Elegí el archivo acá abajo, revisá la lista y tocá <b>Importar</b>. Si un email ya estaba cargado, se actualiza (no se duplica).</li>
       </ol>
+      )}
       <div className="campo">
         <label htmlFor="arch">Archivo (.xlsx o .csv)</label>
         <input id="arch" type="file" accept=".xlsx,.csv,.tsv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={archivo} />
@@ -171,8 +201,19 @@ function exportar(lista) {
   descargar(armarXlsx([{ nombre: 'Contactos', filas, opciones: { anchos: [24, 30, 26, 12, 14, 22, 30, 10, 10, 10, 8, 10, 11] } }]), 'contactos-promoya.xlsx');
 }
 
+// Todos juntos (contactos y usuarios) en un Excel simple: una columna con el nombre y otra con el email
+export async function exportarNombreEmail(avisar) {
+  try {
+    const todos = await api('contactos/exportar');
+    const filas = [['nombre', 'email'], ...todos.map((c) => [c.nombre, c.email])];
+    descargar(armarXlsx([{ nombre: 'Contactos y usuarios', filas, opciones: { anchos: [32, 40] } }]), 'nombres-y-emails-promoya.xlsx');
+    avisar?.(`Listo: ${todos.length} en el Excel`);
+  } catch (e) { avisar?.(e.message, true); }
+}
+
 export default function Contactos() {
-  const [lista, recargar, error] = useDatos('contactos');
+  const avisar = useAviso();
+  const [lista, recargar, error] = useDatos('contactos?lista=contactos');
   const [modal, setModal] = useState(null);
   const [busca, setBusca] = useState('');
   const [tipo, setTipo] = useState('');
@@ -195,10 +236,11 @@ export default function Contactos() {
   return (
     <>
       <div className="cabecera">
-        <div><h1>Contactos</h1><p>{lista.length} contactos · {lista.filter((c) => c.estado === 'activo').length} activos</p></div>
+        <div><h1>Contactos</h1><p>DJs, sellos, radios y prensa · {lista.length} contactos · {lista.filter((c) => c.estado === 'activo').length} activos</p></div>
         <div className="acciones">
           <button className="btn" onClick={bajarPlanilla} title="Planilla de Excel para completar con tus contactos e importarlos todos de una">⬇ Planilla base</button>
-          <button className="btn" onClick={() => exportar(vis)} disabled={!vis.length}>Exportar</button>
+          <button className="btn" onClick={() => exportarNombreEmail(avisar)} title="Contactos y usuarios juntos, en un Excel con nombre y email">⬇ Nombres y emails (todos)</button>
+          <button className="btn" onClick={() => exportar(vis)} disabled={!vis.length} title="Estos contactos con todos sus datos y estadísticas">Exportar detalle</button>
           <button className="btn" onClick={() => setModal('importar')}>Importar</button>
           <button className="btn primario" onClick={() => setModal('nuevo')}>+ Contacto</button>
         </div>

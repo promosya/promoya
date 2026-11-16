@@ -1,5 +1,5 @@
 // API del panel: /api/...
-import { asegurarEsquema, todos, uno, ejec, leerConfig, guardarConfig, registrarEvento, CONFIG_DEFECTO } from './lib/db.js';
+import { asegurarEsquema, todos, uno, ejec, sentencia, enLotes, leerConfig, guardarConfig, registrarEvento, CONFIG_DEFECTO } from './lib/db.js';
 import { crearClave, claveCorrecta, cookieSesion, cookieSalir, sesionValida } from './lib/auth.js';
 import { json, emailValido, usuarioSoundcloud, diaAR } from './lib/util.js';
 import { planificarCampania, proyectar, pasada, cupoDeHoy, contactosFrios, mejorHora, candidatosCampania, agregarGruposCampania } from './lib/motor.js';
@@ -107,8 +107,9 @@ async function rutear(m, [a, b, c], ctx) {
   if (a === 'resumen' && m === 'GET') {
     const conf = await leerConfig(db);
     const tot = await uno(db, `SELECT
-      (SELECT COUNT(*) FROM contactos WHERE estado = 'activo') AS activos,
-      (SELECT COUNT(*) FROM contactos) AS contactos,
+      (SELECT COUNT(*) FROM contactos WHERE estado = 'activo' AND lista = 'contactos') AS activos,
+      (SELECT COUNT(*) FROM contactos WHERE estado = 'activo' AND lista = 'usuarios') AS usuarios,
+      (SELECT COUNT(*) FROM contactos WHERE lista = 'contactos') AS contactos,
       (SELECT COUNT(*) FROM campanias WHERE estado = 'activa') AS activas,
       (SELECT COUNT(*) FROM envios WHERE estado = 'pendiente') AS pendientes`);
     const g = await statsGlobales(db);
@@ -130,10 +131,14 @@ async function rutear(m, [a, b, c], ctx) {
 
   // ---------- Contactos ----------
   if (a === 'contactos') {
-    if (!b && m === 'GET') return json(await listarContactos(db));
-    if (b === 'importar' && m === 'POST') return json(await importar(db, cuerpo.filas || []));
+    if (!b && m === 'GET') return json(await listarContactos(db, url.searchParams));
+    if (b === 'exportar' && m === 'GET') {
+      // Todos juntos (contactos y usuarios), solo nombre y email
+      return json(await todos(db, "SELECT nombre, email, lista FROM contactos ORDER BY lista, nombre COLLATE NOCASE, email"));
+    }
+    if (b === 'importar' && m === 'POST') return json(await importar(db, cuerpo.filas || [], { lista: cuerpo.lista, etiqueta: cuerpo.etiqueta }));
     if (!b && m === 'POST') {
-      const r = await importar(db, [cuerpo], { estricto: true });
+      const r = await importar(db, [cuerpo], { estricto: true, lista: cuerpo.lista });
       return json(r);
     }
     const id = Number(b);
@@ -141,8 +146,8 @@ async function rutear(m, [a, b, c], ctx) {
     if (id && !c && m === 'PUT') {
       const x = cuerpo;
       if (x.email && !emailValido(x.email)) throw err('Email inválido');
-      await ejec(db, `UPDATE contactos SET nombre = ?, email = ?, soundcloud = ?, tipo = ?, pais = ?, etiquetas = ?, notas = ?, estado = ?, actualizado = ? WHERE id = ?`,
-        String(x.nombre || '').trim(), String(x.email).trim().toLowerCase(), usuarioSoundcloud(x.soundcloud), x.tipo || 'dj', x.pais || '', x.etiquetas || '', x.notas || '', x.estado || 'activo', Date.now(), id);
+      await ejec(db, `UPDATE contactos SET nombre = ?, email = ?, soundcloud = ?, tipo = ?, pais = ?, etiquetas = ?, notas = ?, estado = ?, lista = ?, actualizado = ? WHERE id = ?`,
+        String(x.nombre || '').trim(), String(x.email).trim().toLowerCase(), usuarioSoundcloud(x.soundcloud), x.tipo || 'dj', x.pais || '', x.etiquetas || '', x.notas || '', x.estado || 'activo', x.lista === 'usuarios' ? 'usuarios' : 'contactos', Date.now(), id);
       if (x.estado && x.estado !== 'activo') await ejec(db, "UPDATE envios SET estado = 'cancelado' WHERE contacto_id = ? AND estado = 'pendiente'", id);
       return json({ ok: true });
     }
@@ -161,12 +166,12 @@ async function rutear(m, [a, b, c], ctx) {
     if (!b && m === 'GET') {
       return json(await todos(db, `SELECT g.*, COUNT(c.id) AS cantidad, SUM(CASE WHEN c.estado = 'activo' THEN 1 ELSE 0 END) AS activos
         FROM grupos g LEFT JOIN grupo_contactos gc ON gc.grupo_id = g.id LEFT JOIN contactos c ON c.id = gc.contacto_id
-        GROUP BY g.id ORDER BY g.nombre COLLATE NOCASE`));
+        GROUP BY g.id ORDER BY g.lista, g.id`));
     }
     if (b === 'auto' && m === 'POST') return json(await gruposAuto(db, cuerpo));
     if (!b && m === 'POST') {
       if (!String(cuerpo.nombre || '').trim()) throw err('Poné un nombre');
-      const r = await ejec(db, 'INSERT INTO grupos (nombre, creado) VALUES (?, ?)', cuerpo.nombre.trim(), Date.now());
+      const r = await ejec(db, 'INSERT INTO grupos (nombre, lista, creado) VALUES (?, ?, ?)', cuerpo.nombre.trim(), cuerpo.lista === 'usuarios' ? 'usuarios' : 'contactos', Date.now());
       await ponerMiembros(db, r.meta.last_row_id, cuerpo.contactos || []);
       return json({ id: r.meta.last_row_id });
     }
@@ -302,7 +307,7 @@ async function rutear(m, [a, b, c], ctx) {
 
   // ---------- Ajustes ----------
   if (a === 'ajustes') {
-    const EDITABLES = ['tope_diario', 'arranque', 'hora_desde', 'hora_hasta', 'hora_envio', 'tanda', 'remitente_nombre', 'firma', 'recordatorio_dias', 'frio_promos', 'soundcloud_perfil', 'google_client_id'];
+    const EDITABLES = ['tope_diario', 'arranque', 'hora_desde', 'hora_hasta', 'hora_envio', 'tanda', 'remitente_nombre', 'firma', 'recordatorio_dias', 'frio_promos', 'soundcloud_perfil', 'google_client_id', 'separar_listas'];
     if (m === 'GET') {
       const conf = await leerConfig(db);
       const out = Object.fromEntries(EDITABLES.map((k) => [k, conf[k] ?? '']));
@@ -311,7 +316,7 @@ async function rutear(m, [a, b, c], ctx) {
     }
     if (m === 'PUT') {
       const tope = Number(cuerpo.tope_diario);
-      if (cuerpo.tope_diario !== undefined && (!(tope > 0) || tope > 400)) throw err('El tope diario tiene que estar entre 1 y 400');
+      if (cuerpo.tope_diario !== undefined && (!(tope > 0) || tope > 500)) throw err('El tope diario tiene que estar entre 1 y 500 (Gmail personal no deja más de 500 por día)');
       if (cuerpo.soundcloud_perfil !== undefined) cuerpo.soundcloud_perfil = usuarioSoundcloud(cuerpo.soundcloud_perfil);
       for (const k of EDITABLES) if (cuerpo[k] !== undefined) await guardarConfig(db, k, String(cuerpo[k]).trim());
       // El secreto de Google solo se escribe (nunca se devuelve). Vacío = no cambiarlo.
@@ -354,11 +359,13 @@ async function ponerGrupos(db, campaniaId, grupos) {
 }
 
 async function ponerMiembros(db, grupoId, ids) {
-  const lote = [...new Set(ids.map(Number))].filter(Boolean).map((cid) => db.prepare('INSERT OR IGNORE INTO grupo_contactos (grupo_id, contacto_id) VALUES (?, ?)').bind(grupoId, cid));
-  for (let i = 0; i < lote.length; i += 90) await db.batch(lote.slice(i, i + 90));
+  await enLotes(db, [...new Set(ids.map(Number))].filter(Boolean).map((cid) => sentencia(db, 'INSERT OR IGNORE INTO grupo_contactos (grupo_id, contacto_id) VALUES (?, ?)', grupoId, cid)));
 }
 
-async function importar(db, filas, { estricto = false } = {}) {
+async function importar(db, filas, { estricto = false, lista = 'contactos', etiqueta = '' } = {}) {
+  lista = lista === 'usuarios' ? 'usuarios' : 'contactos';
+  etiqueta = String(etiqueta || '').trim();
+  if (filas.length > 20000) throw err('Son demasiados de una vez: importalos en partes de hasta 20.000');
   let nuevos = 0, actualizados = 0;
   const errores = [];
   const lote = [];
@@ -370,26 +377,29 @@ async function importar(db, filas, { estricto = false } = {}) {
     if (vistos.has(email)) continue;
     vistos.add(email);
     if (existentes.has(email)) actualizados++; else nuevos++;
-    lote.push(db.prepare(`INSERT INTO contactos (nombre, email, soundcloud, tipo, pais, etiquetas, notas, creado) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    const etiquetas = [String(f.etiquetas || '').trim(), etiqueta].filter(Boolean).join(', ');
+    lote.push(db.prepare(`INSERT INTO contactos (nombre, email, soundcloud, tipo, pais, etiquetas, notas, lista, creado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(email) DO UPDATE SET
+        lista = CASE WHEN excluded.lista = 'contactos' THEN 'contactos' ELSE contactos.lista END,
         nombre = CASE WHEN excluded.nombre != '' THEN excluded.nombre ELSE contactos.nombre END,
         soundcloud = CASE WHEN excluded.soundcloud != '' THEN excluded.soundcloud ELSE contactos.soundcloud END,
         tipo = CASE WHEN excluded.tipo != '' THEN excluded.tipo ELSE contactos.tipo END,
         pais = CASE WHEN excluded.pais != '' THEN excluded.pais ELSE contactos.pais END,
-        etiquetas = CASE WHEN excluded.etiquetas != '' THEN excluded.etiquetas ELSE contactos.etiquetas END,
+        etiquetas = CASE WHEN excluded.etiquetas = '' THEN contactos.etiquetas WHEN contactos.etiquetas = '' THEN excluded.etiquetas
+          WHEN instr(lower(contactos.etiquetas), lower(excluded.etiquetas)) > 0 THEN contactos.etiquetas ELSE contactos.etiquetas || ', ' || excluded.etiquetas END,
         notas = CASE WHEN excluded.notas != '' THEN excluded.notas ELSE contactos.notas END,
         actualizado = excluded.creado`)
-      .bind(String(f.nombre || '').trim(), email, usuarioSoundcloud(f.soundcloud), normalizarTipo(f.tipo), String(f.pais || '').trim(), String(f.etiquetas || '').trim(), String(f.notas || '').trim(), Date.now()));
+      .bind(String(f.nombre || '').trim(), email, usuarioSoundcloud(f.soundcloud), normalizarTipo(f.tipo, lista === 'usuarios' ? 'otro' : 'dj'), String(f.pais || '').trim(), etiquetas, String(f.notas || '').trim(), lista, Date.now()));
   }
   if (estricto && errores.length) throw err(errores[0].replace(/^Fila 1: e/, 'E'));
   if (estricto && actualizados) throw err('Ya hay un contacto con ese email');
-  for (let i = 0; i < lote.length; i += 90) await db.batch(lote.slice(i, i + 90));
-  return { nuevos, actualizados, errores };
+  await enLotes(db, lote, 500);
+  return { nuevos, actualizados, errores: errores.slice(0, 200), totalErrores: errores.length };
 }
 
-function normalizarTipo(t = '') {
+function normalizarTipo(t = '', defecto = 'dj') {
   const s = String(t).toLowerCase().trim();
-  if (!s) return 'dj';
+  if (!s) return defecto;
   if (/sello|label/.test(s)) return 'sello';
   if (/radio|podcast/.test(s)) return 'radio';
   if (/blog|prensa|medio|revista|playlist|curador/.test(s)) return 'prensa';
@@ -413,16 +423,40 @@ async function statsGlobales(db) {
       COALESCE(SUM(es),0) AS escuchadas, COALESCE(SUM(re),0) AS respuestas FROM pc`);
 }
 
-async function listarContactos(db) {
-  const conf = await leerConfig(db);
-  const frios = await contactosFrios(db, conf);
-  const filas = await todos(db, `WITH ${CTE_POR_CAMPANIA},
+const SELECT_CONTACTOS = `WITH ${CTE_POR_CAMPANIA},
     s AS (SELECT contacto_id, SUM(rec) AS recibidas, SUM(ab) AS abiertas, SUM(cl) AS clics, SUM(es) AS escuchadas, SUM(re) AS respuestas, MAX(ult) AS ultima FROM pc GROUP BY contacto_id)
     SELECT c.*, COALESCE(s.recibidas,0) AS recibidas, COALESCE(s.abiertas,0) AS abiertas, COALESCE(s.clics,0) AS clics,
       COALESCE(s.escuchadas,0) AS escuchadas, COALESCE(s.respuestas,0) AS respuestas, s.ultima,
       (SELECT GROUP_CONCAT(g.nombre, ', ') FROM grupo_contactos gc JOIN grupos g ON g.id = gc.grupo_id WHERE gc.contacto_id = c.id) AS grupos
-    FROM contactos c LEFT JOIN s ON s.contacto_id = c.id ORDER BY c.nombre COLLATE NOCASE, c.email`);
-  return filas.map((f) => ({ ...f, frio: frios.has(f.id) }));
+    FROM contactos c LEFT JOIN s ON s.contacto_id = c.id`;
+
+async function listarContactos(db, p = new URLSearchParams()) {
+  const conf = await leerConfig(db);
+  const frios = await contactosFrios(db, conf);
+  const lista = p.get('lista') === 'usuarios' ? 'usuarios' : 'contactos';
+  if (!p.has('pagina')) {
+    const filas = await todos(db, `${SELECT_CONTACTOS} WHERE c.lista = ? ORDER BY c.nombre COLLATE NOCASE, c.email`, lista);
+    return filas.map((f) => ({ ...f, frio: frios.has(f.id) }));
+  }
+  // Paginado (para miles de usuarios): búsqueda y filtros en la base
+  const por = Math.min(500, Math.max(20, Number(p.get('por')) || 200));
+  const pagina = Math.max(1, Number(p.get('pagina')) || 1);
+  const q = `%${String(p.get('q') || '').trim().toLowerCase()}%`;
+  const filtro = p.get('filtro') || 'todos';
+  const idsFrios = JSON.stringify([...frios]);
+  const donde = `c.lista = ?1 AND (lower(c.nombre) LIKE ?2 OR lower(c.email) LIKE ?2 OR lower(c.etiquetas) LIKE ?2 OR lower(c.pais) LIKE ?2)
+    AND (?3 = 'todos' OR (?3 = 'inactivos' AND c.estado != 'activo') OR (?3 = 'activos' AND c.estado = 'activo')
+      OR (?3 = 'frios' AND c.estado = 'activo' AND c.id IN (SELECT value FROM json_each(?4)))
+      OR (?3 = 'singrupo' AND c.estado = 'activo' AND NOT EXISTS (SELECT 1 FROM grupo_contactos gc WHERE gc.contacto_id = c.id)))`;
+  const [filas, total, cuentas] = await db.batch([
+    sentencia(db, `${SELECT_CONTACTOS} WHERE ${donde} ORDER BY c.id DESC LIMIT ?5 OFFSET ?6`, lista, q, filtro, idsFrios, por, (pagina - 1) * por),
+    sentencia(db, `SELECT COUNT(*) AS n FROM contactos c WHERE ${donde}`, lista, q, filtro, idsFrios),
+    sentencia(db, `SELECT COUNT(*) AS total, SUM(c.estado = 'activo') AS activos, SUM(c.estado != 'activo') AS inactivos,
+      SUM(c.estado = 'activo' AND c.id IN (SELECT value FROM json_each(?2))) AS frios,
+      SUM(c.estado = 'activo' AND NOT EXISTS (SELECT 1 FROM grupo_contactos gc WHERE gc.contacto_id = c.id)) AS singrupo
+      FROM contactos c WHERE c.lista = ?1`, lista, idsFrios),
+  ]);
+  return { filas: filas.results.map((f) => ({ ...f, frio: frios.has(f.id) })), total: total.results[0].n, pagina, por, cuentas: cuentas.results[0] };
 }
 
 async function fichaContacto(db, id) {
@@ -440,22 +474,37 @@ async function fichaContacto(db, id) {
 }
 
 async function gruposAuto(db, x) {
-  const tam = Math.max(1, Math.min(400, Number(x.tamanio) || 25));
+  const tam = Math.max(1, Math.min(490, Number(x.tamanio) || 490));
   const conf = await leerConfig(db);
-  let cts = await todos(db, "SELECT id, tipo, etiquetas FROM contactos WHERE estado = 'activo' ORDER BY id");
+  const lista = x.lista === 'usuarios' ? 'usuarios' : 'contactos';
+  let cts = await todos(db, "SELECT id, tipo, etiquetas FROM contactos WHERE estado = 'activo' AND lista = ? ORDER BY id", lista);
+  if (x.soloSinGrupo) {
+    const con = new Set((await todos(db, 'SELECT DISTINCT gc.contacto_id FROM grupo_contactos gc JOIN grupos g ON g.id = gc.grupo_id WHERE g.lista = ?', lista)).map((r) => r.contacto_id));
+    cts = cts.filter((c) => !con.has(c.id));
+  }
   if (x.tipo) cts = cts.filter((c) => c.tipo === x.tipo);
   if (x.etiqueta) cts = cts.filter((c) => c.etiquetas.toLowerCase().split(/[,;]/).map((s) => s.trim()).includes(String(x.etiqueta).toLowerCase().trim()));
   if (x.excluirFrios) { const f = await contactosFrios(db, conf); cts = cts.filter((c) => !f.has(c.id)); }
   if (!cts.length) throw err('No hay contactos activos con ese filtro');
   if (x.mezclar !== false) for (let i = cts.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cts[i], cts[j]] = [cts[j], cts[i]]; }
-  const prefijo = String(x.prefijo || 'Grupo').trim();
-  const creados = [];
+  const prefijo = String(x.prefijo || (lista === 'usuarios' ? 'Usuarios' : 'Grupo')).trim();
+  // Numeración: sigue desde los grupos que ya existen con ese nombre
+  const [maxId, existentes] = await db.batch([
+    sentencia(db, 'SELECT COALESCE(MAX(id), 0) AS m FROM grupos'),
+    sentencia(db, 'SELECT nombre FROM grupos WHERE nombre LIKE ?', `${prefijo} %`),
+  ]);
+  let id = maxId.results[0].m;
+  let numero = Math.max(0, ...existentes.results.map((g) => Number(g.nombre.slice(prefijo.length + 1)) || 0));
+  const creados = [], st = [];
+  const ahora = Date.now();
   for (let i = 0; i < cts.length; i += tam) {
-    const nombre = `${prefijo} ${creados.length + 1}`;
-    const r = await ejec(db, 'INSERT INTO grupos (nombre, creado) VALUES (?, ?)', nombre, Date.now());
-    await ponerMiembros(db, r.meta.last_row_id, cts.slice(i, i + tam).map((c) => c.id));
-    creados.push({ id: r.meta.last_row_id, nombre, cantidad: Math.min(tam, cts.length - i) });
+    id++; numero++;
+    const nombre = `${prefijo} ${numero}`;
+    st.push(sentencia(db, 'INSERT INTO grupos (id, nombre, lista, creado) VALUES (?, ?, ?, ?)', id, nombre, lista, ahora));
+    for (const c of cts.slice(i, i + tam)) st.push(sentencia(db, 'INSERT OR IGNORE INTO grupo_contactos (grupo_id, contacto_id) VALUES (?, ?)', id, c.id));
+    creados.push({ id, nombre, cantidad: Math.min(tam, cts.length - i) });
   }
+  await enLotes(db, st, 500);
   return { creados };
 }
 

@@ -64,8 +64,8 @@ export default function Ajustes() {
         <div className="tarjeta">
           <h2>Límites de envío</h2>
           <div className="fila">
-            <div className="campo"><label htmlFor="tope">Máximo por día</label><input id="tope" type="number" min={1} max={400} value={f.tope_diario} onChange={set('tope_diario')} />
-              <span className="ayuda">Sumando todas las campañas.</span></div>
+            <div className="campo"><label htmlFor="tope">Máximo por día</label><input id="tope" type="number" min={1} max={500} value={f.tope_diario} onChange={set('tope_diario')} />
+              <span className="ayuda">Sumando todo. Gmail personal corta en 500 por día (contando también los que mandás a mano): 490 deja un margen.</span></div>
             <div className="campo"><label htmlFor="arr">Arranque gradual</label><input id="arr" type="text" value={f.arranque} onChange={set('arranque')} />
               <span className="ayuda">{escalones.length ? escalones.map((x, i) => `sem. ${i + 1}${i === escalones.length - 1 ? '+' : ''}: ${x}`).join(' · ') : 'Vacío = sin arranque gradual'}</span></div>
           </div>
@@ -74,7 +74,9 @@ export default function Ajustes() {
             <div className="campo"><label htmlFor="hh">Hasta las</label><input id="hh" type="number" min={1} max={24} value={f.hora_hasta} onChange={set('hora_hasta')} /></div>
             <div className="campo"><label htmlFor="he">Hora por defecto</label><input id="he" type="number" min={0} max={23} value={f.hora_envio} onChange={set('hora_envio')} /></div>
           </div>
-          <p className="sub" style={{ margin: 0 }}>Hora Argentina. Cuando un contacto ya abrió mails, se le manda a la hora en que suele abrir. {f.primer_envio ? `Primer envío: ${diaLindo(f.primer_envio)}.` : ''}</p>
+          <p className="sub" style={{ margin: '0 0 12px' }}>Hora Argentina. Cuando un contacto ya abrió mails, se le manda a la hora en que suele abrir. {f.primer_envio ? `Primer envío: ${diaLindo(f.primer_envio)}.` : ''}</p>
+          <label className="check"><input type="checkbox" checked={f.separar_listas !== '0'} onChange={(e) => setF((x) => ({ ...x, separar_listas: e.target.checked ? '1' : '0' }))} /> Contactos y usuarios nunca el mismo día</label>
+          <p className="sub" style={{ margin: '4px 0 0 26px' }}>Así el día de tus DJs no se mezcla con los envíos grandes a la gente que descargó tu música.</p>
         </div>
 
         <div className="tarjeta">

@@ -28,7 +28,7 @@ export default function Resumen() {
       <EstadoMotor motor={d.motor} />
 
       <div className="kpis">
-        <Kpi titulo="Contactos activos" valor={d.activos} detalle={d.frios ? `${d.frios} fríos` : `${d.contactos} en total`} />
+        <Kpi titulo="Contactos activos" valor={d.activos} detalle={`${d.usuarios || 0} usuarios${d.frios ? ` · ${d.frios} fríos` : ''}`} />
         <Kpi titulo="Hoy" valor={`${d.cupo.enviados}/${d.cupo.tope}`} detalle={`quedan ${d.cupo.restante} mails`} acento />
         <Kpi titulo="Campañas enviando" valor={d.activas} detalle={`${d.pendientes} mails en cola`} />
         <Kpi titulo="Abrieron" valor={`${pct(d.abiertas, d.recibidas)}%`} detalle={`${d.abiertas} de ${d.recibidas}`} />
@@ -44,10 +44,10 @@ export default function Resumen() {
               <div className="dias">
                 {d.proyeccion.map((x, i) => (
                   <div className="dia" key={x.dia} title={Object.entries(x.porCampania).map(([k, v]) => `${k}: ${v}`).join('\n')}>
-                    <span className={i === 0 ? '' : 'sub'}>{i === 0 ? 'Hoy' : diaLindo(x.dia)}</span>
+                    <span className={i === 0 ? '' : 'sub'}>{i === 0 ? 'Hoy' : diaLindo(x.dia)}{x.lista && <span className={`chip ${x.lista === 'usuarios' ? 'azul' : 'acento'}`} style={{ marginLeft: 6, padding: '0 6px', fontSize: 10 }}>{x.lista === 'usuarios' ? 'Usuarios' : 'DJs'}</span>}</span>
                     <div className="pista">
                       <i className="ya" style={{ width: `${((x.ya + x.salen) / maxDia) * 100}%` }} />
-                      <i style={{ left: `${(x.ya / maxDia) * 100}%`, width: `${(x.salen / maxDia) * 100}%` }} />
+                      <i style={{ left: `${(x.ya / maxDia) * 100}%`, width: `${(x.salen / maxDia) * 100}%`, background: x.lista === 'usuarios' ? 'var(--azul)' : undefined }} />
                     </div>
                     <span className="num">{x.ya + x.salen}<span className="sub">/{x.tope}</span></span>
                   </div>

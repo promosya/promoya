@@ -183,7 +183,7 @@ export default function EditorCampania({ id }) {
               <div className="aviso">Primero armá grupos de contactos. <a className="btn chico" href="#/grupos">Ir a Grupos</a></div>
             ) : (
               <>
-                <p className="sub" style={{ marginTop: 0 }}>Cada día sale un grupo, en el orden que elijas. Si un contacto está en dos grupos, le llega una sola vez.</p>
+                <p className="sub" style={{ marginTop: 0 }}>Cada día sale un grupo, en el orden que elijas. Si un contacto está en dos grupos, le llega una sola vez. Los grupos de usuarios salen en días distintos que los de contactos, y ningún día se pasa del tope: la fecha exacta de cada grupo se ve al activar.</p>
                 <div className="grupo-sel">
                   {ordenados.map((g) => {
                     const i = f.grupos.indexOf(g.id);
@@ -193,7 +193,7 @@ export default function EditorCampania({ id }) {
                         <input type="checkbox" checked={elegido} disabled={!editable} onChange={() => alternarGrupo(g.id)} aria-label={`Elegir ${g.nombre}`} style={{ accentColor: 'var(--acento)' }} />
                         {elegido && <span className="orden">{i + 1}</span>}
                         <div style={{ minWidth: 0 }}>
-                          <b>{g.nombre}</b> <span className="sub">{g.activos} contactos</span>
+                          <b>{g.nombre}</b> {g.lista === 'usuarios' && <span className="chip azul">Usuarios</span>} <span className="sub">{g.activos} {g.lista === 'usuarios' ? 'usuarios' : 'contactos'}</span>
                           {elegido && <div className="sub">{diaLindo(sumarDias(f.inicio || hoyISO(), i))}</div>}
                         </div>
                         {elegido && editable && (
