@@ -164,11 +164,11 @@ export function Kpi({ titulo, valor, detalle, acento }) {
 export function Embudo({ s }) {
   const base = s.recibidas || 0;
   const pasos = [
-    ['Recibieron', base, '#555'],
-    ['Abrieron', s.abiertas || 0, 'var(--azul)'],
-    ['Tocaron link', s.clics || 0, 'var(--acento)'],
-    ['Escucharon', s.escuchadas || 0, 'var(--ok)'],
-    ['Respondieron', s.respuestas || 0, '#c792ea'],
+    ['Recibieron', base, 'rgba(255,255,255,.2)'],
+    ['Abrieron', s.abiertas || 0, 'linear-gradient(90deg, #6e0c1c, #a3122a)'],
+    ['Tocaron link', s.clics || 0, 'linear-gradient(90deg, #8c0e22, #d81433)'],
+    ['Escucharon', s.escuchadas || 0, 'linear-gradient(90deg, #b3112b, #ff2e4a)'],
+    ['Respondieron', s.respuestas || 0, 'linear-gradient(90deg, #e01e3a, #ff7a8a)'],
   ];
   return (
     <div className="embudo">

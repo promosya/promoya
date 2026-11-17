@@ -124,6 +124,7 @@ async function rutear(m, [a, b, c], ctx) {
       cupo: await cupoDeHoy(db, conf),
       proyeccion: await proyectar(db, 14),
       eventos,
+      analitica: await analitica(db),
       gmail: { configurado: gmailConfigurado(env, conf), conectado: Boolean(conf.gmail_refresh), email: conf.gmail_email || '' },
       modoPrueba: env.MODO_PRUEBA === '1',
       motor: { ultimo: Number(conf.ultimo_tick || 0), resultado: (() => { try { return JSON.parse(conf.ultimo_tick_res || 'null'); } catch { return null; } })() },
@@ -431,6 +432,47 @@ async function statsGlobales(db) {
   return uno(db, `WITH ${CTE_POR_CAMPANIA}
     SELECT COALESCE(SUM(rec),0) AS recibidas, COALESCE(SUM(ab),0) AS abiertas, COALESCE(SUM(cl),0) AS clics,
       COALESCE(SUM(es),0) AS escuchadas, COALESCE(SUM(re),0) AS respuestas FROM pc`);
+}
+
+// Datos para los gráficos del Resumen: todo en un solo lote (1 consulta de D1)
+async function analitica(db) {
+  const AR = 10800000; // Argentina = UTC-3
+  const desde30 = Date.now() - 30 * 864e5;
+  const desde90 = Date.now() - 90 * 864e5;
+  const pc = `WITH ${CTE_POR_CAMPANIA}`;
+  const r = await db.batch([
+    // 0: rendimiento por lista (los usuarios borrados por rebote quedan con contacto_id negativo → cuentan como usuarios)
+    db.prepare(`${pc} SELECT COALESCE(ct.lista, 'usuarios') AS lista, SUM(rec) AS rec, SUM(ab) AS ab, SUM(cl) AS cl, SUM(es) AS es, SUM(re) AS re
+      FROM pc LEFT JOIN contactos ct ON ct.id = pc.contacto_id GROUP BY 1`),
+    // 1: estado de cada lista
+    db.prepare('SELECT lista, estado, COUNT(*) AS n FROM contactos GROUP BY lista, estado'),
+    // 2: mails enviados por día (30 días)
+    db.prepare(`SELECT date((enviado - ${AR}) / 1000, 'unixepoch') AS d, COUNT(*) AS n FROM envios
+      WHERE enviado > ? AND estado IN ('enviado','rebotado') GROUP BY d`).bind(desde30),
+    // 3: aperturas, clics y respuestas por día (30 días)
+    db.prepare(`SELECT date((ts - ${AR}) / 1000, 'unixepoch') AS d, tipo, COUNT(*) AS n FROM eventos
+      WHERE ts > ? AND tipo IN ('apertura','clic','respuesta') GROUP BY d, tipo`).bind(desde30),
+    // 4: aperturas por día de la semana y hora (90 días)
+    db.prepare(`SELECT CAST(strftime('%w', (ts - ${AR}) / 1000, 'unixepoch') AS INTEGER) AS s,
+      CAST(strftime('%H', (ts - ${AR}) / 1000, 'unixepoch') AS INTEGER) AS h, COUNT(*) AS n
+      FROM eventos WHERE ts > ? AND tipo IN ('apertura','clic') GROUP BY s, h`).bind(desde90),
+    // 5: últimas campañas
+    db.prepare(`${pc} SELECT ca.id, ca.nombre, ca.tipo, SUM(rec) AS rec, SUM(ab) AS ab, SUM(cl) AS cl, SUM(es) AS es, SUM(re) AS re
+      FROM pc JOIN campanias ca ON ca.id = pc.campania_id GROUP BY ca.id HAVING SUM(rec) > 0 ORDER BY ca.creado DESC LIMIT 8`),
+    // 6: los más activos (DJs y usuarios) y 7: los sellos que más se interesaron
+    ...['<> \'sellos\'', "= 'sellos'"].map((cond) => db.prepare(`${pc} SELECT ct.id, ct.nombre, ct.email, ct.lista,
+      SUM(ab) AS ab, SUM(cl) AS cl, SUM(es) AS es, SUM(re) AS re, MAX(ult) AS ult
+      FROM pc JOIN contactos ct ON ct.id = pc.contacto_id WHERE ct.lista ${cond}
+      GROUP BY ct.id HAVING SUM(ab) + SUM(re) > 0 ORDER BY SUM(re) * 4 + SUM(es) * 3 + SUM(cl) * 2 + SUM(ab) DESC, MAX(ult) DESC LIMIT 6`)),
+  ]);
+  const [porLista, estados, enviadosDia, eventosDia, horas, campanias, activos, sellosActivos] = r.map((x) => x.results || []);
+  // Serie diaria completa (los días sin nada van en cero)
+  const dias = {};
+  for (let i = 29; i >= 0; i--) { const d = diaAR(Date.now() - i * 864e5); dias[d] = { dia: d, enviados: 0, aperturas: 0, clics: 0, respuestas: 0 }; }
+  for (const x of enviadosDia) if (dias[x.d]) dias[x.d].enviados = x.n;
+  const clave = { apertura: 'aperturas', clic: 'clics', respuesta: 'respuestas' };
+  for (const x of eventosDia) if (dias[x.d]) dias[x.d][clave[x.tipo]] = x.n;
+  return { porLista, estados, diario: Object.values(dias), horas, campanias: campanias.reverse(), activos, sellosActivos };
 }
 
 const SELECT_CONTACTOS = `WITH ${CTE_POR_CAMPANIA},
