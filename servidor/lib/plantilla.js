@@ -9,6 +9,22 @@ Escuchalo acá: {link}
 
 ¡Gracias por el apoyo!`;
 
+export const DEMOS_CUERPO = `Hola {nombre},
+
+Soy {artista}. Les comparto una selección de temas nuevos que estoy buscando firmar: creo que pueden encajar muy bien con el sello.
+
+Escuchalos acá: {link}
+
+Si alguno les interesa, quedo atento a su respuesta. ¡Muchas gracias por su tiempo!`;
+
+export const DEMOS_RECORDATORIO = `Hola {nombre},
+
+Les escribo por si se les pasó el mail anterior: les había compartido "{tema}", una selección de temas nuevos.
+
+Les dejo el link de nuevo: {link}
+
+Cualquier devolución me sirve mucho. ¡Gracias!`;
+
 export const RECORDATORIO_DEFECTO = `Hola {nombre},
 
 Te escribo por si se te pasó el mail de la semana pasada: te había mandado "{tema}".
@@ -25,7 +41,9 @@ export function armarMail({ campania, contacto, envio, config, base }) {
   const esRecordatorio = envio.tipo === 'recordatorio';
   const link = `${base}/l/${envio.token}`;
   const baja = `${base}/baja/${envio.token}`;
-  const nombre = primerNombre(contacto.nombre) || 'qué tal';
+  const demos = campania.tipo === 'demos';
+  // A un sello se lo saluda con el nombre completo («Hola Toolroom Records»); a una persona, con el primer nombre
+  const nombre = (contacto.lista === 'sellos' || demos ? String(contacto.nombre || '').trim() : primerNombre(contacto.nombre)) || (demos ? 'equipo' : 'qué tal');
   const datos = { nombre, tema: campania.tema, artista: campania.artista, link };
 
   const asuntoBase = esRecordatorio
@@ -33,7 +51,7 @@ export function armarMail({ campania, contacto, envio, config, base }) {
     : (envio.variante === 'B' && campania.asunto_b) ? campania.asunto_b : campania.asunto_a;
   const asunto = reemplazar(asuntoBase, { ...datos, link: '' }).trim();
 
-  const cuerpo = (esRecordatorio ? campania.recordatorio_cuerpo || RECORDATORIO_DEFECTO : campania.cuerpo) || CUERPO_DEFECTO;
+  const cuerpo = (esRecordatorio ? campania.recordatorio_cuerpo || (demos ? DEMOS_RECORDATORIO : RECORDATORIO_DEFECTO) : campania.cuerpo) || (demos ? DEMOS_CUERPO : CUERPO_DEFECTO);
   const tieneLink = /\{link\}/i.test(cuerpo);
   const firma = config.firma || [config.remitente_nombre, config.soundcloud_perfil && `soundcloud.com/${config.soundcloud_perfil}`].filter(Boolean).join('\n');
 
@@ -50,7 +68,7 @@ export function armarMail({ campania, contacto, envio, config, base }) {
     <td style="vertical-align:middle;font-family:Arial,Helvetica,sans-serif">
       <div style="font-size:15px;font-weight:bold;color:#111">${escaparHtml(campania.tema || campania.nombre)}</div>
       ${campania.artista ? `<div style="font-size:13px;color:#666;margin:2px 0 8px">${escaparHtml(campania.artista)}</div>` : ''}
-      <a href="${link}" style="display:inline-block;background:#ff5500;color:#fff;text-decoration:none;font-size:14px;font-weight:bold;padding:9px 16px;border-radius:4px">&#9654; Escuchar en SoundCloud</a>
+      <a href="${link}" style="display:inline-block;background:#ff5500;color:#fff;text-decoration:none;font-size:14px;font-weight:bold;padding:9px 16px;border-radius:4px">&#9654; ${demos ? 'Escuchar los temas' : 'Escuchar en SoundCloud'}</a>
     </td>
   </tr>
 </table>`;

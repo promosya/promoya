@@ -10,8 +10,11 @@ export default function Campanias() {
   return (
     <>
       <div className="cabecera">
-        <div><h1>Campañas</h1><p>Una campaña por tema: a quién se manda, qué día y cómo le fue.</p></div>
-        <a className="btn primario" href="#/campanias/nueva">+ Nueva campaña</a>
+        <div><h1>Campañas</h1><p>Promos de tus temas a contactos y usuarios, y demos a sellos: a quién se manda, qué día y cómo le fue.</p></div>
+        <div className="acciones">
+          <a className="btn" href="#/campanias/nueva?tipo=demos">+ Demos a sellos</a>
+          <a className="btn primario" href="#/campanias/nueva">+ Promo</a>
+        </div>
       </div>
       {!lista.length ? (
         <div className="tarjeta vacio"><b>Todavía no hay campañas</b>Pegá el link de SoundCloud de tu tema nuevo y elegí los grupos.<div style={{ marginTop: 16 }}><a className="btn primario" href="#/campanias/nueva">Crear la primera</a></div></div>
@@ -26,7 +29,7 @@ export default function Campanias() {
                 {c.imagen ? <img className="portada" src={c.imagen} alt="" /> : <span className="portada" />}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <h2 style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nombre}</h2><ChipCampania estado={c.estado} />
+                    <h2 style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nombre}</h2><span className={`chip ${c.tipo === 'demos' ? 'azul' : ''}`}>{c.tipo === 'demos' ? '📨 Demos' : '🎧 Promo'}</span><ChipCampania estado={c.estado} />
                     {c.errores > 0 && <span className="chip mal">{c.errores} con error</span>}
                   </div>
                   <div className="sub" style={{ marginTop: 3 }}>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { api, useDatos, useAviso, ir, Modal, ChipContacto, TIPOS, pct, hace } from '../ui.jsx';
-import { plantillaContactos, armarXlsx, descargar, leerXlsx, textoDeCsv } from '../planilla.js';
+import { plantillaContactos, plantillaSellos, armarXlsx, descargar, leerXlsx, textoDeCsv } from '../planilla.js';
 
 // CSV/TSV simple con comillas
 function parsearCSV(txt) {
@@ -66,6 +66,7 @@ export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
   const [f, setF] = useState({ nombre: '', email: '', soundcloud: '', tipo: 'dj', pais: '', etiquetas: '', notas: '', estado: 'activo', lista: 'contactos', ...inicial });
   const [guardando, setGuardando] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const sello = f.lista === 'sellos';
   const guardar = async (e) => {
     e.preventDefault();
     setGuardando(true);
@@ -80,22 +81,25 @@ export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
   return (
     <form onSubmit={guardar}>
       <div className="fila">
-        <div className="campo"><label htmlFor="cn">Nombre / artista</label><input id="cn" type="text" value={f.nombre} onChange={set('nombre')} autoFocus /></div>
-        <div className="campo"><label htmlFor="ce">Email</label><input id="ce" type="email" required value={f.email} onChange={set('email')} /></div>
+        <div className="campo"><label htmlFor="cn">{sello ? 'Nombre del sello' : 'Nombre / artista'}</label><input id="cn" type="text" value={f.nombre} onChange={set('nombre')} autoFocus /></div>
+        <div className="campo"><label htmlFor="ce">{sello ? 'Email para demos' : 'Email'}</label><input id="ce" type="email" required value={f.email} onChange={set('email')} /></div>
       </div>
-      <div className="campo">
-        <label htmlFor="cs">Usuario de SoundCloud</label>
-        <input id="cs" type="text" value={f.soundcloud} onChange={set('soundcloud')} placeholder="soundcloud.com/usuario o @usuario" />
-        <span className="ayuda">Con esto la plataforma sabe que, si ese usuario aparece escuchando en SoundCloud, es este contacto.</span>
-      </div>
+      {!sello && (
+        <div className="campo">
+          <label htmlFor="cs">Usuario de SoundCloud</label>
+          <input id="cs" type="text" value={f.soundcloud} onChange={set('soundcloud')} placeholder="soundcloud.com/usuario o @usuario" />
+          <span className="ayuda">Con esto la plataforma sabe que, si ese usuario aparece escuchando en SoundCloud, es este contacto.</span>
+        </div>
+      )}
       <div className="fila">
         <div className="campo"><label htmlFor="cli">Lista</label>
           <select id="cli" value={f.lista} onChange={set('lista')}>
-            <option value="contactos">Contactos (DJs, sellos…)</option>
+            <option value="contactos">Contactos (DJs, radios, prensa)</option>
             <option value="usuarios">Usuarios (descargaron tu música)</option>
+            <option value="sellos">Sellos (para mandar demos)</option>
           </select></div>
-        <div className="campo"><label htmlFor="ct">Tipo</label>
-          <select id="ct" value={f.tipo} onChange={set('tipo')}>{Object.entries(TIPOS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>
+        {!sello && <div className="campo"><label htmlFor="ct">Tipo</label>
+          <select id="ct" value={f.tipo} onChange={set('tipo')}>{Object.entries(TIPOS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>}
         <div className="campo"><label htmlFor="cp">País / ciudad</label><input id="cp" type="text" value={f.pais} onChange={set('pais')} /></div>
         {f.id && <div className="campo"><label htmlFor="cst">Estado</label>
           <select id="cst" value={f.estado} onChange={set('estado')}>
@@ -114,6 +118,7 @@ export function FormContacto({ inicial = {}, onGuardado, onCancelar }) {
 }
 
 export const bajarPlanilla = () => descargar(plantillaContactos(), 'planilla-contactos-promoya.xlsx');
+export const bajarPlanillaSellos = () => descargar(plantillaSellos(), 'planilla-sellos-promoya.xlsx');
 
 export function Importar({ onCerrar, onListo, lista = 'contactos' }) {
   const avisar = useAviso();
@@ -146,11 +151,18 @@ export function Importar({ onCerrar, onListo, lista = 'contactos' }) {
     finally { setSubiendo(false); }
   };
   return (
-    <Modal titulo={usuarios ? 'Importar usuarios' : 'Importar contactos'} onCerrar={onCerrar} pie={<>
+    <Modal titulo={{ usuarios: 'Importar usuarios', sellos: 'Importar sellos' }[lista] || 'Importar contactos'} onCerrar={onCerrar} pie={<>
       <button className="btn fantasma" onClick={onCerrar}>Cancelar</button>
       <button className="btn primario" disabled={!filas.length || subiendo} onClick={importar}>{subiendo ? 'Importando…' : `Importar ${filas.length || ''}`}</button>
     </>}>
-      {usuarios ? (
+      {lista === 'sellos' ? (
+        <ol className="instrucciones">
+          <li><b>Descargá la planilla de sellos</b> y abrila con Excel o Google Sheets.
+            <div style={{ marginTop: 8 }}><button className="btn chico" onClick={bajarPlanillaSellos}>⬇ Descargar planilla de sellos (.xlsx)</button></div></li>
+          <li>Cargá <b>un sello por fila</b>: el <b>nombre</b> del sello y el <b>email</b> donde reciben demos. País y notas son opcionales.</li>
+          <li>Guardala como está (<b>.xlsx</b>), elegila acá abajo y tocá <b>Importar</b>. También sirve cualquier Excel o CSV con columnas «nombre» y «email».</li>
+        </ol>
+      ) : usuarios ? (
         <>
           <ol className="instrucciones">
             <li>Descargá la lista de gente que bajó tu tema desde <b>Hypeddit</b> (o la plataforma que uses): el archivo <b>CSV o Excel</b> de cada lanzamiento.</li>

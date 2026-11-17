@@ -96,6 +96,23 @@ export function armarXlsx(hojas) {
 export const COLUMNAS_PLANILLA = ['nombre', 'email', 'soundcloud', 'tipo', 'pais', 'etiquetas', 'notas'];
 export const TIPOS_PLANILLA = ['DJ', 'Sello', 'Radio', 'Prensa', 'Otro'];
 
+// Planilla para sellos: solo nombre y email (país y notas, opcionales)
+export function plantillaSellos() {
+  const instrucciones = [
+    ['Cómo completar esta planilla de sellos'],
+    [''],
+    ['1. Andá a la hoja «Sellos» (pestaña de abajo).'],
+    ['2. Borrá la fila de ejemplo y escribí un sello por fila: el nombre del sello y el email donde reciben demos.'],
+    ['3. país y notas son opcionales (por ejemplo: «solo tech house», «responden rápido»).'],
+    ['4. Guardá el archivo como está (.xlsx).'],
+    ['5. En PromoYa: Sellos → Importar → elegí este archivo → Importar.'],
+  ].map((f, i) => Object.assign(f, { estilo: i === 0 ? 2 : 3 }));
+  return armarXlsx([
+    { nombre: 'Sellos', filas: [['nombre', 'email', 'pais', 'notas'], ['Sello Ejemplo Records', 'demos@selloejemplo.com', 'Reino Unido', 'Tech house']], opciones: { anchos: [32, 36, 18, 40] } },
+    { nombre: 'Instrucciones', filas: instrucciones, opciones: { anchos: [110], fijarCabecera: false } },
+  ]);
+}
+
 export function plantillaContactos() {
   const listaTipos = `<dataValidations count="1"><dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Tipo" error="Elegí uno de la lista" sqref="D2:D2000"><formula1>"${TIPOS_PLANILLA.join(',')}"</formula1></dataValidation></dataValidations>`;
   const instrucciones = [

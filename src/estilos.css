@@ -213,3 +213,11 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
 .instrucciones a { color: var(--acento); }
 .btn.deshabilitado { opacity: .45; pointer-events: none; }
 .marca b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+
+/* Selector Promo / Demos */
+.selector-tipo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.opcion-tipo { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 10px; border: 1px solid var(--borde2); background: #0e0e0e; cursor: pointer; color: var(--texto); }
+.opcion-tipo span { color: var(--suave); font-size: 13px; line-height: 1.4; }
+.opcion-tipo.elegida { border-color: var(--acento); background: #1a0d04; box-shadow: 0 0 0 3px #ff6a0022; }
+.opcion-tipo:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 560px) { .selector-tipo { grid-template-columns: minmax(0, 1fr); } }

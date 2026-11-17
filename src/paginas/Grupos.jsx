@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { api, useDatos, useAviso, Modal, TIPOS, ChipContacto } from '../ui.jsx';
 
 const MAX_GRUPO = 490; // Gmail personal no deja mandar más de 500 por día
+const NOMBRES = { contactos: 'contactos', usuarios: 'usuarios', sellos: 'sellos' };
+const TITULOS = { contactos: 'Contactos', usuarios: 'Usuarios', sellos: 'Sellos' };
 
 function Auto({ onCerrar, onListo, total, sinGrupo, lista }) {
   const avisar = useAviso();
   const usuarios = lista === 'usuarios';
-  const [f, setF] = useState({ tamanio: MAX_GRUPO, tipo: '', etiqueta: '', prefijo: usuarios ? 'Usuarios' : 'Grupo', excluirFrios: !usuarios, mezclar: true, soloSinGrupo: sinGrupo > 0 && sinGrupo < total });
+  const [f, setF] = useState({ tamanio: MAX_GRUPO, tipo: '', etiqueta: '', prefijo: { usuarios: 'Usuarios', sellos: 'Sellos' }[lista] || 'Grupo', excluirFrios: !usuarios, mezclar: true, soloSinGrupo: sinGrupo > 0 && sinGrupo < total });
   const [creando, setCreando] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const tam = Math.min(MAX_GRUPO, Math.max(1, Number(f.tamanio) || 1));
@@ -18,10 +20,10 @@ function Auto({ onCerrar, onListo, total, sinGrupo, lista }) {
     finally { setCreando(false); }
   };
   return (
-    <Modal titulo={usuarios ? 'Armar grupos de usuarios' : 'Armar grupos de contactos'} onCerrar={onCerrar} pie={<><button className="btn fantasma" onClick={onCerrar}>Cancelar</button><button className="btn primario" onClick={crear} disabled={creando}>{creando ? 'Creando…' : 'Crear grupos'}</button></>}>
+    <Modal titulo={`Armar grupos de ${NOMBRES[lista]}`} onCerrar={onCerrar} pie={<><button className="btn fantasma" onClick={onCerrar}>Cancelar</button><button className="btn primario" onClick={crear} disabled={creando}>{creando ? 'Creando…' : 'Crear grupos'}</button></>}>
       <div className="fila">
         <div className="campo"><label htmlFor="at">Personas por grupo (máx. {MAX_GRUPO})</label><input id="at" type="number" min={1} max={MAX_GRUPO} value={f.tamanio} onChange={set('tamanio')} />
-          <span className="ayuda">Con {base} {usuarios ? 'usuarios' : 'contactos'} salen {Math.ceil(base / tam)} grupos (uno por día). Gmail personal corta en 500 por día.</span></div>
+          <span className="ayuda">Con {base} {NOMBRES[lista]} salen {Math.ceil(base / tam)} grupos (uno por día). Gmail personal corta en 500 por día.</span></div>
         <div className="campo"><label htmlFor="ap">Nombre</label><input id="ap" type="text" value={f.prefijo} onChange={set('prefijo')} /><span className="ayuda">Quedan «{f.prefijo} 1», «{f.prefijo} 2»… (sigue la numeración si ya hay)</span></div>
       </div>
       <div className="fila">
@@ -80,11 +82,11 @@ function Editar({ grupo, contactos, lista, onCerrar, onListo }) {
 }
 
 export default function Grupos() {
-  const inicial = /lista=usuarios/.test(location.hash) ? 'usuarios' : 'contactos';
+  const inicial = (location.hash.match(/lista=(usuarios|sellos)/) || [])[1] || 'contactos';
   const [lista, setLista] = useState(inicial);
   const usuarios = lista === 'usuarios';
   const [grupos, recargar, error] = useDatos('grupos');
-  const [contactos, recargarC] = useDatos('contactos?lista=contactos');
+  const [contactos, recargarC] = useDatos(`contactos?lista=${usuarios ? 'contactos' : lista}`);
   const [cuentasU, setCuentasU] = useState(null);
   const avisar = useAviso();
   const [modal, setModal] = useState(null);
@@ -97,7 +99,7 @@ export default function Grupos() {
   const total = usuarios ? (cuentasU?.activos || 0) : activosC.length;
   const sinGrupo = usuarios ? (cuentasU?.singrupo || 0) : activosC.filter((c) => !c.grupos).length;
   const deLista = grupos.filter((g) => (g.lista || 'contactos') === lista);
-  const quien = usuarios ? 'usuarios' : 'contactos';
+  const quien = NOMBRES[lista];
 
   const abrir = async (g) => { try { setModal({ tipo: 'editar', grupo: await api(`grupos/${g.id}`) }); } catch (e) { avisar(e.message, true); } };
   const borrar = async (g) => {
@@ -115,7 +117,7 @@ export default function Grupos() {
   return (
     <>
       <div className="cabecera">
-        <div><h1>Grupos</h1><p>Cada día de una campaña sale un grupo (hasta {MAX_GRUPO} personas). Contactos y usuarios salen en días distintos.</p></div>
+        <div><h1>Grupos</h1><p>Cada día de una campaña sale un grupo (hasta {MAX_GRUPO} personas). Contactos, usuarios y sellos salen en días distintos.</p></div>
         <div className="acciones">
           {deLista.length > 1 && <button className="btn fantasma peligro" onClick={borrarTodos}>Borrar todos</button>}
           {!usuarios && <button className="btn" onClick={() => setModal({ tipo: 'editar', grupo: null })}>+ Grupo a mano</button>}
@@ -123,17 +125,18 @@ export default function Grupos() {
         </div>
       </div>
       <div className="pestanias" style={{ marginBottom: 14 }}>
-        <button className={`pestania ${!usuarios ? 'activa' : ''}`} onClick={() => setLista('contactos')}>Contactos (DJs, sellos…)</button>
-        <button className={`pestania ${usuarios ? 'activa' : ''}`} onClick={() => setLista('usuarios')}>Usuarios (descargas)</button>
+        {[['contactos', 'Contactos (DJs)'], ['usuarios', 'Usuarios (descargas)'], ['sellos', 'Sellos (demos)']].map(([k, t]) => (
+          <button key={k} className={`pestania ${lista === k ? 'activa' : ''}`} onClick={() => setLista(k)}>{t}</button>
+        ))}
       </div>
       {sinGrupo > 0 && deLista.length > 0 && <div className="aviso info"><span>{sinGrupo} {quien} activos no están en ningún grupo.</span><button className="btn chico" onClick={() => setModal({ tipo: 'auto' })}>Agruparlos</button></div>}
       {!deLista.length ? (
         <div className="tarjeta vacio"><b>No hay grupos de {quien}</b>{total ? `Tenés ${total} ${quien} activos. Dividilos en grupos de hasta ${MAX_GRUPO}.` : `Primero cargá tus ${quien}.`}
-          <div style={{ marginTop: 16 }}>{total ? <button className="btn primario" onClick={() => setModal({ tipo: 'auto' })}>Armar automáticamente</button> : <a className="btn primario" href={`#/${quien}`}>Ir a {usuarios ? 'Usuarios' : 'Contactos'}</a>}</div></div>
+          <div style={{ marginTop: 16 }}>{total ? <button className="btn primario" onClick={() => setModal({ tipo: 'auto' })}>Armar automáticamente</button> : <a className="btn primario" href={`#/${quien}`}>Ir a {TITULOS[lista]}</a>}</div></div>
       ) : (
         <div className="tabla-envoltura">
           <table>
-            <thead><tr><th>Grupo</th><th className="num">{usuarios ? 'Usuarios' : 'Contactos'}</th><th className="num">Activos</th><th></th></tr></thead>
+            <thead><tr><th>Grupo</th><th className="num">{TITULOS[lista]}</th><th className="num">Activos</th><th></th></tr></thead>
             <tbody>
               {deLista.map((g) => (
                 <tr key={g.id} className="clic" onClick={() => abrir(g)}>

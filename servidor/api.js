@@ -1,9 +1,9 @@
 // API del panel: /api/...
-import { asegurarEsquema, todos, uno, ejec, sentencia, enLotes, leerConfig, guardarConfig, registrarEvento, CONFIG_DEFECTO } from './lib/db.js';
+import { asegurarEsquema, todos, uno, ejec, sentencia, enLotes, leerConfig, guardarConfig, registrarEvento, CONFIG_DEFECTO, normLista } from './lib/db.js';
 import { crearClave, claveCorrecta, cookieSesion, cookieSalir, sesionValida } from './lib/auth.js';
 import { json, emailValido, usuarioSoundcloud, diaAR } from './lib/util.js';
 import { planificarCampania, proyectar, pasada, cupoDeHoy, contactosFrios, mejorHora, candidatosCampania, agregarGruposCampania } from './lib/motor.js';
-import { armarMail, CUERPO_DEFECTO, RECORDATORIO_DEFECTO } from './lib/plantilla.js';
+import { armarMail, CUERPO_DEFECTO, RECORDATORIO_DEFECTO, DEMOS_CUERPO, DEMOS_RECORDATORIO } from './lib/plantilla.js';
 import { gmailConfigurado, urlConsentimiento, completarConexion, desconectar } from './lib/gmail.js';
 
 const LIBRES = new Set(['GET sesion', 'POST login', 'POST crear-clave', 'GET gmail/vuelta']);
@@ -109,6 +109,7 @@ async function rutear(m, [a, b, c], ctx) {
     const tot = await uno(db, `SELECT
       (SELECT COUNT(*) FROM contactos WHERE estado = 'activo' AND lista = 'contactos') AS activos,
       (SELECT COUNT(*) FROM contactos WHERE estado = 'activo' AND lista = 'usuarios') AS usuarios,
+      (SELECT COUNT(*) FROM contactos WHERE estado = 'activo' AND lista = 'sellos') AS sellos,
       (SELECT COUNT(*) FROM contactos WHERE lista = 'contactos') AS contactos,
       (SELECT COUNT(*) FROM campanias WHERE estado = 'activa') AS activas,
       (SELECT COUNT(*) FROM envios WHERE estado = 'pendiente') AS pendientes`);
@@ -147,7 +148,7 @@ async function rutear(m, [a, b, c], ctx) {
       const x = cuerpo;
       if (x.email && !emailValido(x.email)) throw err('Email inválido');
       await ejec(db, `UPDATE contactos SET nombre = ?, email = ?, soundcloud = ?, tipo = ?, pais = ?, etiquetas = ?, notas = ?, estado = ?, lista = ?, actualizado = ? WHERE id = ?`,
-        String(x.nombre || '').trim(), String(x.email).trim().toLowerCase(), usuarioSoundcloud(x.soundcloud), x.tipo || 'dj', x.pais || '', x.etiquetas || '', x.notas || '', x.estado || 'activo', x.lista === 'usuarios' ? 'usuarios' : 'contactos', Date.now(), id);
+        String(x.nombre || '').trim(), String(x.email).trim().toLowerCase(), usuarioSoundcloud(x.soundcloud), x.tipo || 'dj', x.pais || '', x.etiquetas || '', x.notas || '', x.estado || 'activo', normLista(x.lista), Date.now(), id);
       if (x.estado && x.estado !== 'activo') await ejec(db, "UPDATE envios SET estado = 'cancelado' WHERE contacto_id = ? AND estado = 'pendiente'", id);
       return json({ ok: true });
     }
@@ -171,7 +172,7 @@ async function rutear(m, [a, b, c], ctx) {
     if (b === 'auto' && m === 'POST') return json(await gruposAuto(db, cuerpo));
     if (!b && m === 'POST') {
       if (!String(cuerpo.nombre || '').trim()) throw err('Poné un nombre');
-      const r = await ejec(db, 'INSERT INTO grupos (nombre, lista, creado) VALUES (?, ?, ?)', cuerpo.nombre.trim(), cuerpo.lista === 'usuarios' ? 'usuarios' : 'contactos', Date.now());
+      const r = await ejec(db, 'INSERT INTO grupos (nombre, lista, creado) VALUES (?, ?, ?)', cuerpo.nombre.trim(), normLista(cuerpo.lista), Date.now());
       await ponerMiembros(db, r.meta.last_row_id, cuerpo.contactos || []);
       return json({ id: r.meta.last_row_id });
     }
@@ -205,11 +206,14 @@ async function rutear(m, [a, b, c], ctx) {
   // ---------- Campañas ----------
   if (a === 'campanias') {
     if (!b && m === 'GET') return json(await listarCampanias(db));
-    if (b === 'textos' && m === 'GET') { const conf = await leerConfig(db); return json({ cuerpo: CUERPO_DEFECTO, recordatorio: RECORDATORIO_DEFECTO, artista: conf.remitente_nombre || '' }); }
+    if (b === 'textos' && m === 'GET') {
+      const conf = await leerConfig(db);
+      return json({ cuerpo: CUERPO_DEFECTO, recordatorio: RECORDATORIO_DEFECTO, demos: { cuerpo: DEMOS_CUERPO, recordatorio: DEMOS_RECORDATORIO }, artista: conf.remitente_nombre || '' });
+    }
     if (!b && m === 'POST') {
       const x = validarCampania(cuerpo);
-      const r = await ejec(db, `INSERT INTO campanias (nombre, tema, artista, link, imagen, asunto_a, asunto_b, cuerpo, recordatorio_dias, recordatorio_asunto, recordatorio_cuerpo, inicio, creado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, x.nombre, x.tema, x.artista, x.link, x.imagen, x.asunto_a, x.asunto_b, x.cuerpo, x.recordatorio_dias, x.recordatorio_asunto, x.recordatorio_cuerpo, x.inicio, Date.now());
+      const r = await ejec(db, `INSERT INTO campanias (nombre, tema, artista, link, imagen, asunto_a, asunto_b, cuerpo, recordatorio_dias, recordatorio_asunto, recordatorio_cuerpo, inicio, tipo, creado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, x.nombre, x.tema, x.artista, x.link, x.imagen, x.asunto_a, x.asunto_b, x.cuerpo, x.recordatorio_dias, x.recordatorio_asunto, x.recordatorio_cuerpo, x.inicio, x.tipo, Date.now());
       await ponerGrupos(db, r.meta.last_row_id, cuerpo.grupos || []);
       return json({ id: r.meta.last_row_id });
     }
@@ -219,8 +223,10 @@ async function rutear(m, [a, b, c], ctx) {
     if (id && !c && m === 'GET') return json(await detalleCampania(db, camp));
     if (id && !c && m === 'PUT') {
       const x = validarCampania({ ...camp, ...cuerpo });
-      await ejec(db, `UPDATE campanias SET nombre = ?, tema = ?, artista = ?, link = ?, imagen = ?, asunto_a = ?, asunto_b = ?, cuerpo = ?, recordatorio_dias = ?, recordatorio_asunto = ?, recordatorio_cuerpo = ?, inicio = ? WHERE id = ?`,
-        x.nombre, x.tema, x.artista, x.link, x.imagen, x.asunto_a, x.asunto_b, x.cuerpo, x.recordatorio_dias, x.recordatorio_asunto, x.recordatorio_cuerpo, x.inicio, id);
+      // El tipo (promo / demos) solo se puede cambiar mientras es borrador
+      if (camp.estado !== 'borrador') x.tipo = camp.tipo || 'promo';
+      await ejec(db, `UPDATE campanias SET nombre = ?, tema = ?, artista = ?, link = ?, imagen = ?, asunto_a = ?, asunto_b = ?, cuerpo = ?, recordatorio_dias = ?, recordatorio_asunto = ?, recordatorio_cuerpo = ?, inicio = ?, tipo = ? WHERE id = ?`,
+        x.nombre, x.tema, x.artista, x.link, x.imagen, x.asunto_a, x.asunto_b, x.cuerpo, x.recordatorio_dias, x.recordatorio_asunto, x.recordatorio_cuerpo, x.inicio, x.tipo, id);
       if (cuerpo.grupos && camp.estado === 'borrador') await ponerGrupos(db, id, cuerpo.grupos);
       return json({ ok: true });
     }
@@ -250,15 +256,15 @@ async function rutear(m, [a, b, c], ctx) {
     if (id && c === 'vista' && m === 'POST') {
       const conf = await leerConfig(db);
       const x = { ...camp, ...cuerpo };
-      const contacto = { nombre: cuerpo.nombrePrueba || 'Juan Pérez', email: 'ejemplo@mail.com' };
-      const env1 = { token: 'VISTA', tipo: cuerpo.tipo || 'principal', variante: cuerpo.variante || 'A' };
+      const contacto = ejemploDestinatario(x.tipo);
+      const env1 = { token: 'VISTA', tipo: cuerpo.envio === 'recordatorio' ? 'recordatorio' : 'principal', variante: cuerpo.variante || 'A' };
       return json(armarMail({ campania: x, contacto, envio: env1, config: conf, base }));
     }
   }
   if (a === 'vista-previa' && m === 'POST') {
     const conf = await leerConfig(db);
-    const contacto = { nombre: 'Juan Pérez', email: 'ejemplo@mail.com' };
-    return json(armarMail({ campania: cuerpo, contacto, envio: { token: 'VISTA', tipo: cuerpo.tipo || 'principal', variante: cuerpo.variante || 'A' }, config: conf, base }));
+    const contacto = ejemploDestinatario(cuerpo.tipo);
+    return json(armarMail({ campania: cuerpo, contacto, envio: { token: 'VISTA', tipo: cuerpo.envio === 'recordatorio' ? 'recordatorio' : 'principal', variante: cuerpo.variante || 'A' }, config: conf, base }));
   }
 
   // Marcar a mano que lo escuchó (además de lo que detecta SoundCloud)
@@ -337,17 +343,21 @@ function splitTitulo(titulo = '', autor = '') {
   return [t, autor];
 }
 
+const ejemploDestinatario = (tipo) => (tipo === 'demos' ? { nombre: 'Sello Ejemplo Records', email: 'demos@ejemplo.com', lista: 'sellos' } : { nombre: 'Juan Pérez', email: 'ejemplo@mail.com', lista: 'contactos' });
+
 function validarCampania(x) {
   const s = (v) => String(v ?? '').trim();
+  const tipo = x.tipo === 'demos' ? 'demos' : 'promo';
   const out = {
+    tipo,
     nombre: s(x.nombre) || s(x.tema), tema: s(x.tema), artista: s(x.artista), link: s(x.link), imagen: s(x.imagen),
-    asunto_a: s(x.asunto_a), asunto_b: s(x.asunto_b), cuerpo: s(x.cuerpo) || CUERPO_DEFECTO,
+    asunto_a: s(x.asunto_a), asunto_b: s(x.asunto_b), cuerpo: s(x.cuerpo) || (tipo === 'demos' ? DEMOS_CUERPO : CUERPO_DEFECTO),
     recordatorio_dias: Math.max(0, Math.min(30, Number(x.recordatorio_dias ?? 4) | 0)),
     recordatorio_asunto: s(x.recordatorio_asunto), recordatorio_cuerpo: s(x.recordatorio_cuerpo),
     inicio: /^\d{4}-\d{2}-\d{2}$/.test(s(x.inicio)) ? s(x.inicio) : diaAR(),
   };
-  if (!out.nombre) throw err('Poné el nombre del tema');
-  if (!/^https?:\/\//i.test(out.link)) throw err('Falta el link de SoundCloud');
+  if (!out.nombre) throw err(tipo === 'demos' ? 'Poné un nombre para la campaña' : 'Poné el nombre del tema');
+  if (!/^https?:\/\//i.test(out.link)) throw err(tipo === 'demos' ? 'Falta el link de la playlist' : 'Falta el link de SoundCloud');
   if (!out.asunto_a) throw err('Falta el asunto del mail');
   return out;
 }
@@ -363,7 +373,7 @@ async function ponerMiembros(db, grupoId, ids) {
 }
 
 async function importar(db, filas, { estricto = false, lista = 'contactos', etiqueta = '' } = {}) {
-  lista = lista === 'usuarios' ? 'usuarios' : 'contactos';
+  lista = normLista(lista);
   etiqueta = String(etiqueta || '').trim();
   if (filas.length > 20000) throw err('Son demasiados de una vez: importalos en partes de hasta 20.000');
   let nuevos = 0, actualizados = 0;
@@ -380,7 +390,7 @@ async function importar(db, filas, { estricto = false, lista = 'contactos', etiq
     const etiquetas = [String(f.etiquetas || '').trim(), etiqueta].filter(Boolean).join(', ');
     lote.push(db.prepare(`INSERT INTO contactos (nombre, email, soundcloud, tipo, pais, etiquetas, notas, lista, creado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(email) DO UPDATE SET
-        lista = CASE WHEN excluded.lista = 'contactos' THEN 'contactos' ELSE contactos.lista END,
+        lista = CASE WHEN contactos.lista = 'usuarios' AND excluded.lista != 'usuarios' THEN excluded.lista ELSE contactos.lista END,
         nombre = CASE WHEN excluded.nombre != '' THEN excluded.nombre ELSE contactos.nombre END,
         soundcloud = CASE WHEN excluded.soundcloud != '' THEN excluded.soundcloud ELSE contactos.soundcloud END,
         tipo = CASE WHEN excluded.tipo != '' THEN excluded.tipo ELSE contactos.tipo END,
@@ -389,7 +399,7 @@ async function importar(db, filas, { estricto = false, lista = 'contactos', etiq
           WHEN instr(lower(contactos.etiquetas), lower(excluded.etiquetas)) > 0 THEN contactos.etiquetas ELSE contactos.etiquetas || ', ' || excluded.etiquetas END,
         notas = CASE WHEN excluded.notas != '' THEN excluded.notas ELSE contactos.notas END,
         actualizado = excluded.creado`)
-      .bind(String(f.nombre || '').trim(), email, usuarioSoundcloud(f.soundcloud), normalizarTipo(f.tipo, lista === 'usuarios' ? 'otro' : 'dj'), String(f.pais || '').trim(), etiquetas, String(f.notas || '').trim(), lista, Date.now()));
+      .bind(String(f.nombre || '').trim(), email, usuarioSoundcloud(f.soundcloud), normalizarTipo(f.tipo, { usuarios: 'otro', sellos: 'sello' }[lista] || 'dj'), String(f.pais || '').trim(), etiquetas, String(f.notas || '').trim(), lista, Date.now()));
   }
   if (estricto && errores.length) throw err(errores[0].replace(/^Fila 1: e/, 'E'));
   if (estricto && actualizados) throw err('Ya hay un contacto con ese email');
@@ -433,7 +443,7 @@ const SELECT_CONTACTOS = `WITH ${CTE_POR_CAMPANIA},
 async function listarContactos(db, p = new URLSearchParams()) {
   const conf = await leerConfig(db);
   const frios = await contactosFrios(db, conf);
-  const lista = p.get('lista') === 'usuarios' ? 'usuarios' : 'contactos';
+  const lista = normLista(p.get('lista'));
   if (!p.has('pagina')) {
     const filas = await todos(db, `${SELECT_CONTACTOS} WHERE c.lista = ? ORDER BY c.nombre COLLATE NOCASE, c.email`, lista);
     return filas.map((f) => ({ ...f, frio: frios.has(f.id) }));
@@ -476,7 +486,7 @@ async function fichaContacto(db, id) {
 async function gruposAuto(db, x) {
   const tam = Math.max(1, Math.min(490, Number(x.tamanio) || 490));
   const conf = await leerConfig(db);
-  const lista = x.lista === 'usuarios' ? 'usuarios' : 'contactos';
+  const lista = normLista(x.lista);
   let cts = await todos(db, "SELECT id, tipo, etiquetas FROM contactos WHERE estado = 'activo' AND lista = ? ORDER BY id", lista);
   if (x.soloSinGrupo) {
     const con = new Set((await todos(db, 'SELECT DISTINCT gc.contacto_id FROM grupo_contactos gc JOIN grupos g ON g.id = gc.grupo_id WHERE g.lista = ?', lista)).map((r) => r.contacto_id));
@@ -487,7 +497,7 @@ async function gruposAuto(db, x) {
   if (x.excluirFrios) { const f = await contactosFrios(db, conf); cts = cts.filter((c) => !f.has(c.id)); }
   if (!cts.length) throw err('No hay contactos activos con ese filtro');
   if (x.mezclar !== false) for (let i = cts.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cts[i], cts[j]] = [cts[j], cts[i]]; }
-  const prefijo = String(x.prefijo || (lista === 'usuarios' ? 'Usuarios' : 'Grupo')).trim();
+  const prefijo = String(x.prefijo || { usuarios: 'Usuarios', sellos: 'Sellos' }[lista] || 'Grupo').trim();
   // Numeración: sigue desde los grupos que ya existen con ese nombre
   const [maxId, existentes] = await db.batch([
     sentencia(db, 'SELECT COALESCE(MAX(id), 0) AS m FROM grupos'),

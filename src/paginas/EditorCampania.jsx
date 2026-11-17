@@ -23,7 +23,8 @@ export default function EditorCampania({ id }) {
         setConB(Boolean(c.asunto_b));
       }).catch((e) => avisar(e.message, true));
     } else if (textos) {
-      setF({ nombre: '', tema: '', artista: textos.artista || '', link: '', imagen: '', asunto_a: '', asunto_b: '', cuerpo: textos.cuerpo, recordatorio_dias: 4, recordatorio_asunto: '', recordatorio_cuerpo: textos.recordatorio, inicio: hoyISO(), grupos: [], estado: 'borrador' });
+      const demos = /tipo=demos/.test(location.hash);
+      setF({ tipo: demos ? 'demos' : 'promo', nombre: '', tema: '', artista: textos.artista || '', link: '', imagen: '', asunto_a: '', asunto_b: '', cuerpo: demos ? textos.demos.cuerpo : textos.cuerpo, recordatorio_dias: demos ? 7 : 4, recordatorio_asunto: '', recordatorio_cuerpo: demos ? textos.demos.recordatorio : textos.recordatorio, inicio: hoyISO(), grupos: [], estado: 'borrador' });
     }
   }, [id, textos]);
 
@@ -31,13 +32,31 @@ export default function EditorCampania({ id }) {
   useEffect(() => {
     if (!f) return;
     const t = setTimeout(() => {
-      api('vista-previa', { metodo: 'POST', datos: { ...f, asunto_b: conB ? f.asunto_b : '', tipo: vistaTipo } }).then(setVista).catch(() => {});
+      api('vista-previa', { metodo: 'POST', datos: { ...f, asunto_b: conB ? f.asunto_b : '', envio: vistaTipo } }).then(setVista).catch(() => {});
     }, 350);
     return () => clearTimeout(t);
   }, [f, conB, vistaTipo]);
 
   if (!f || !grupos) return <div className="cargando">Cargando…</div>;
   const editable = f.estado === 'borrador';
+  const demos = f.tipo === 'demos';
+  // Promo: grupos de contactos y usuarios. Demos: grupos de sellos.
+  const gruposDelTipo = grupos.filter((g) => (demos ? g.lista === 'sellos' : g.lista !== 'sellos'));
+
+  // Al cambiar de tipo, si los textos siguen siendo los de fábrica, se cambian por los del otro tipo
+  const cambiarTipo = (tipo) => setF((x) => {
+    if (x.tipo === tipo) return x;
+    const deFabrica = (v, a, b) => !v || v === a || v === b;
+    const t = textos || {};
+    const aDemos = tipo === 'demos';
+    return {
+      ...x, tipo, grupos: [],
+      cuerpo: deFabrica(x.cuerpo, t.cuerpo, t.demos?.cuerpo) && t.demos ? (aDemos ? t.demos.cuerpo : t.cuerpo) : x.cuerpo,
+      recordatorio_cuerpo: deFabrica(x.recordatorio_cuerpo, t.recordatorio, t.demos?.recordatorio) && t.demos ? (aDemos ? t.demos.recordatorio : t.recordatorio) : x.recordatorio_cuerpo,
+      recordatorio_dias: x.recordatorio_dias === (aDemos ? 4 : 7) ? (aDemos ? 7 : 4) : x.recordatorio_dias,
+      asunto_a: '', asunto_b: '',
+    };
+  });
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'number' ? Number(e.target.value) : e.target.value }));
 
   const buscarSC = async (link = f.link) => {
@@ -47,9 +66,9 @@ export default function EditorCampania({ id }) {
       const d = await api('soundcloud/info', { metodo: 'POST', datos: { url: link } });
       setF((x) => ({
         ...x, tema: x.tema || d.tema, artista: d.artista || x.artista, imagen: d.imagen || x.imagen,
-        nombre: x.nombre || d.tema,
-        asunto_a: x.asunto_a || `Promo: ${d.artista || x.artista} - ${d.tema}`,
-        asunto_b: x.asunto_b || `{nombre}, te mando mi nuevo tema 🎧`,
+        nombre: x.nombre || (x.tipo === 'demos' ? `Demos: ${d.tema}` : d.tema),
+        asunto_a: x.asunto_a || (x.tipo === 'demos' ? `Demos: ${d.artista || x.artista} - ${d.tema}` : `Promo: ${d.artista || x.artista} - ${d.tema}`),
+        asunto_b: x.asunto_b || (x.tipo === 'demos' ? `Temas nuevos de ${d.artista || x.artista} para {nombre}` : `{nombre}, te mando mi nuevo tema 🎧`),
       }));
     } catch (e) { avisar(e.message, true); }
     finally { setBuscando(false); }
@@ -73,7 +92,7 @@ export default function EditorCampania({ id }) {
 
   const elegidos = f.grupos.map((gid) => grupos.find((g) => g.id === gid)).filter(Boolean);
   const totalContactos = elegidos.reduce((a, g) => a + (g.activos || 0), 0);
-  const ordenados = [...elegidos, ...grupos.filter((g) => !f.grupos.includes(g.id))];
+  const ordenados = [...elegidos, ...gruposDelTipo.filter((g) => !f.grupos.includes(g.id))];
 
   const guardar = async (activar = false) => {
     setGuardando(true);
@@ -94,7 +113,7 @@ export default function EditorCampania({ id }) {
   return (
     <>
       <div className="cabecera">
-        <div><h1>{id ? 'Editar campaña' : 'Nueva campaña'}</h1><p>{editable ? 'Pegá el link de SoundCloud y elegí a qué grupos va, en qué orden.' : 'La campaña ya arrancó: podés cambiar los textos de lo que falta enviar.'}</p></div>
+        <div><h1>{id ? 'Editar campaña' : 'Nueva campaña'}</h1><p>{editable ? (demos ? 'Pegá el link de la playlist con tus temas y elegí a qué grupos de sellos va.' : 'Pegá el link de SoundCloud y elegí a qué grupos va, en qué orden.') : 'La campaña ya arrancó: podés cambiar los textos de lo que falta enviar.'}</p></div>
         <div className="acciones">
           <a className="btn fantasma" href={id ? `#/campanias/${id}` : '#/campanias'}>Cancelar</a>
           <button className="btn" onClick={() => guardar(false)} disabled={guardando}>Guardar</button>
@@ -105,20 +124,36 @@ export default function EditorCampania({ id }) {
       <div className="grilla lado">
         <div>
           <div className="tarjeta">
-            <h2>El tema</h2>
+            <h2>Tipo de campaña</h2>
+            <div className="selector-tipo" role="radiogroup" aria-label="Tipo de campaña">
+              {[
+                ['promo', '🎧 Promo', 'Tu tema nuevo a tus contactos (DJs) y usuarios. Un grupo por día.'],
+                ['demos', '📨 Demos', 'Una playlist con tus temas nuevos a sellos, para que los escuchen y te firmen.'],
+              ].map(([k, t, d]) => (
+                <button key={k} type="button" role="radio" aria-checked={f.tipo === k} disabled={!editable && f.tipo !== k}
+                  className={`opcion-tipo ${f.tipo === k ? 'elegida' : ''}`} onClick={() => editable && cambiarTipo(k)}>
+                  <b>{t}</b><span>{d}</span>
+                </button>
+              ))}
+            </div>
+            {!editable && <p className="sub" style={{ margin: '8px 0 0' }}>El tipo no se puede cambiar después de activar la campaña.</p>}
+          </div>
+
+          <div className="tarjeta">
+            <h2>{demos ? 'La playlist' : 'El tema'}</h2>
             <div className="campo">
-              <label htmlFor="link">Link de SoundCloud</label>
-              <input id="link" type="url" placeholder="https://soundcloud.com/movedeck/... (puede ser privado)" value={f.link} onChange={set('link')} onBlur={() => buscarSC()} onPaste={(e) => setTimeout(() => buscarSC(e.target.value), 0)} />
-              <span className="ayuda">{buscando ? 'Buscando el tema en SoundCloud…' : 'Al pegarlo completo el nombre y la tapa solos.'}</span>
+              <label htmlFor="link">{demos ? 'Link de la playlist de SoundCloud' : 'Link de SoundCloud'}</label>
+              <input id="link" type="url" placeholder={demos ? 'https://soundcloud.com/movedeck/sets/... (puede ser privada)' : 'https://soundcloud.com/movedeck/... (puede ser privado)'} value={f.link} onChange={set('link')} onBlur={() => buscarSC()} onPaste={(e) => setTimeout(() => buscarSC(e.target.value), 0)} />
+              <span className="ayuda">{buscando ? 'Buscando en SoundCloud…' : demos ? 'Armá en SoundCloud una playlist privada con los temas que querés mostrar y pegá su link. Completo el nombre y la tapa solos.' : 'Al pegarlo completo el nombre y la tapa solos.'}</span>
             </div>
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               {f.imagen ? <img className="portada" src={f.imagen} alt="" style={{ width: 84, height: 84 }} /> : <span className="portada" style={{ width: 84, height: 84 }} />}
               <div style={{ flex: 1 }}>
                 <div className="fila">
-                  <div className="campo"><label htmlFor="tema">Tema</label><input id="tema" type="text" value={f.tema} onChange={set('tema')} /></div>
+                  <div className="campo"><label htmlFor="tema">{demos ? 'Nombre de la playlist' : 'Tema'}</label><input id="tema" type="text" value={f.tema} onChange={set('tema')} /></div>
                   <div className="campo"><label htmlFor="artista">Artista</label><input id="artista" type="text" value={f.artista} onChange={set('artista')} /></div>
                 </div>
-                <div className="campo" style={{ marginBottom: 0 }}><label htmlFor="nombre">Nombre de la campaña</label><input id="nombre" type="text" value={f.nombre} onChange={set('nombre')} placeholder="Ej: Promo Groove Machine (DJs)" /></div>
+                <div className="campo" style={{ marginBottom: 0 }}><label htmlFor="nombre">Nombre de la campaña</label><input id="nombre" type="text" value={f.nombre} onChange={set('nombre')} placeholder={demos ? 'Ej: Demos noviembre (sellos de tech house)' : 'Ej: Promo Groove Machine (DJs)'} /></div>
               </div>
             </div>
           </div>
@@ -179,8 +214,8 @@ export default function EditorCampania({ id }) {
               <label htmlFor="ini">Empieza el</label>
               <input id="ini" type="date" value={f.inicio || hoyISO()} min={hoyISO()} onChange={set('inicio')} disabled={!editable} />
             </div>
-            {!grupos.length ? (
-              <div className="aviso">Primero armá grupos de contactos. <a className="btn chico" href="#/grupos">Ir a Grupos</a></div>
+            {!gruposDelTipo.length ? (
+              <div className="aviso">{demos ? 'Primero cargá tus sellos y armá grupos con ellos.' : 'Primero armá grupos de contactos o usuarios.'} <a className="btn chico" href={demos ? '#/grupos?lista=sellos' : '#/grupos'}>Ir a Grupos</a></div>
             ) : (
               <>
                 <p className="sub" style={{ marginTop: 0 }}>Cada día sale un grupo, en el orden que elijas. Si un contacto está en dos grupos, le llega una sola vez. Los grupos de usuarios salen en días distintos que los de contactos, y ningún día se pasa del tope: la fecha exacta de cada grupo se ve al activar.</p>
@@ -193,7 +228,7 @@ export default function EditorCampania({ id }) {
                         <input type="checkbox" checked={elegido} disabled={!editable} onChange={() => alternarGrupo(g.id)} aria-label={`Elegir ${g.nombre}`} style={{ accentColor: 'var(--acento)' }} />
                         {elegido && <span className="orden">{i + 1}</span>}
                         <div style={{ minWidth: 0 }}>
-                          <b>{g.nombre}</b> {g.lista === 'usuarios' && <span className="chip azul">Usuarios</span>} <span className="sub">{g.activos} {g.lista === 'usuarios' ? 'usuarios' : 'contactos'}</span>
+                          <b>{g.nombre}</b> {g.lista === 'usuarios' && <span className="chip azul">Usuarios</span>} <span className="sub">{g.activos} {{ usuarios: 'usuarios', sellos: 'sellos' }[g.lista] || 'contactos'}</span>
                           {elegido && <div className="sub">{diaLindo(sumarDias(f.inicio || hoyISO(), i))}</div>}
                         </div>
                         {elegido && editable && (

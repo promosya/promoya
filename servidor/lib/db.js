@@ -94,7 +94,13 @@ const ESQUEMA = [
 const MIGRACIONES = [
   // v2: dos listas: «contactos» (DJs, sellos, radios: los importantes) y «usuarios» (gente que descargó tu música)
   ["ALTER TABLE contactos ADD COLUMN lista TEXT NOT NULL DEFAULT 'contactos'", "ALTER TABLE grupos ADD COLUMN lista TEXT NOT NULL DEFAULT 'contactos'", 'CREATE INDEX IF NOT EXISTS ix_contactos_lista ON contactos(lista, estado)'],
+  // v3: campañas de «promo» (contactos y usuarios) o de «demos» (sellos, con una playlist)
+  ["ALTER TABLE campanias ADD COLUMN tipo TEXT NOT NULL DEFAULT 'promo'"],
 ];
+
+// Listas de destinatarios: contactos (DJs, radios, prensa), usuarios (descargaron tu música) y sellos (para mandar demos)
+export const LISTAS = ['contactos', 'usuarios', 'sellos'];
+export const normLista = (v) => (LISTAS.includes(v) ? v : 'contactos');
 const VERSION = MIGRACIONES.length + 1;
 
 // El plan gratis de Cloudflare permite 50 consultas a la base por pasada; un db.batch() cuenta como UNA.

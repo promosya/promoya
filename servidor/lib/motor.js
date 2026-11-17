@@ -296,7 +296,7 @@ export async function tick(env, db, { base, forzarVentana = false, config } = {}
   if (!limite) return res;
 
   const [cola, camps] = await db.batch([
-    sentencia(db, `SELECT e.*, ct.nombre AS ct_nombre, ct.email AS ct_email, ct.estado AS ct_estado,
+    sentencia(db, `SELECT e.*, ct.nombre AS ct_nombre, ct.email AS ct_email, ct.estado AS ct_estado, ct.lista AS ct_lista,
         (SELECT p.asunto FROM envios p WHERE p.campania_id = e.campania_id AND p.contacto_id = e.contacto_id AND p.tipo = 'principal') AS asunto_original
       FROM envios e JOIN campanias c ON c.id = e.campania_id JOIN contactos ct ON ct.id = e.contacto_id
       WHERE e.estado = 'pendiente' AND c.estado = 'activa' AND e.programado <= ? AND (? IS NULL OR ct.lista = ?)
@@ -310,7 +310,7 @@ export async function tick(env, db, { base, forzarVentana = false, config } = {}
     const camp = campanias.get(envio.campania_id);
     if (envio.ct_estado !== 'activo') { st.push(sentencia(db, "UPDATE envios SET estado = 'cancelado', error = 'contacto no activo' WHERE id = ?", envio.id)); continue; }
     if (envio.tipo === 'principal' && !envio.variante) envio.variante = camp.asunto_b ? (camp.ab_ganador || (envio.id % 2 ? 'B' : 'A')) : 'A';
-    const ct = { id: envio.contacto_id, nombre: envio.ct_nombre, email: envio.ct_email };
+    const ct = { id: envio.contacto_id, nombre: envio.ct_nombre, email: envio.ct_email, lista: envio.ct_lista };
     const mail = armarMail({ campania: camp, contacto: ct, envio, config, base });
     try {
       let id = 'prueba-' + envio.token, hilo = null;

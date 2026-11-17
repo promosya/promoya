@@ -25,7 +25,9 @@ export default function AgregarGrupos({ campania, onCerrar, onListo }) {
 
   const porId = new Map((datos?.grupos || []).map((g) => [g.id, g]));
   const total = elegidos.reduce((a, id) => a + (porId.get(id)?.nuevos || 0), 0);
-  const ordenados = datos ? [...elegidos.map((id) => porId.get(id)).filter(Boolean), ...datos.grupos.filter((g) => !elegidos.includes(g.id))] : [];
+  // Demos solo a grupos de sellos; promo a contactos y usuarios
+  const delTipo = (g) => (campania.tipo === 'demos' ? g.lista === 'sellos' : g.lista !== 'sellos');
+  const ordenados = datos ? [...elegidos.map((id) => porId.get(id)).filter(Boolean), ...datos.grupos.filter((g) => delTipo(g) && !elegidos.includes(g.id))] : [];
 
   const guardar = async () => {
     setGuardando(true);
